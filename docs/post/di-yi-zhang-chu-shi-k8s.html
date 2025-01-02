@@ -24,7 +24,7 @@
 > 摘取官网: https://kubernetes.io/zh-cn/docs/concepts/overview/ 
 
 **Kubernetes** 这个名字源于希腊语，意为`舵手`或`飞行员`。">
-<meta property="og:title" content="第一章初始k8s">
+<meta property="og:title" content="第一章初识k8s">
 <meta property="og:description" content="官网: https://kubernetes.io/zh-cn/
 
 ## 第一章 初识 Kubernetes
@@ -42,7 +42,7 @@
 <meta property="og:type" content="article">
 <meta property="og:url" content="https://jhy-hong.github.io/post/di-yi-zhang-chu-shi-k8s.html">
 <meta property="og:image" content="https://github.githubassets.com/favicons/favicon.svg">
-<title>第一章初始k8s</title>
+<title>第一章初识k8s</title>
 
 
 
@@ -75,7 +75,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 
 <body>
     <div id="header">
-<h1 class="postTitle">第一章初始k8s</h1>
+<h1 class="postTitle">第一章初识k8s</h1>
 <div class="title-right">
     <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
         <svg class="octicon" width="16" height="16">
@@ -249,7 +249,11 @@ console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 
 <script>
 document.getElementById("pathHome").setAttribute("d",IconList["home"]);
 document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
-
+cmButton=document.getElementById("cmButton");
+    span=document.createElement("span");
+    span.setAttribute("class","Counter");
+    span.innerHTML="2";
+    cmButton.appendChild(span);
 
 
 function openComments(){
