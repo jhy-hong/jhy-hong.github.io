@@ -1,0 +1,522 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekVercount.js'></script>
+    <link rel="icon" href="https://avatars.githubusercontent.com/u/59826062?v=4"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="### k8s运行时1.24版本起不再直接支持docker，通常我们会选择Containerd作为k8s的运行时
+containerd 的生态系统包括一系列与其集成的工具和组件，这些工具和组件扩展了 containerd 的功能并增强了其适用性。">
+<meta property="og:title" content="kubernetes容器运作行时(CRI )Containerd 的相关内容">
+<meta property="og:description" content="### k8s运行时1.24版本起不再直接支持docker，通常我们会选择Containerd作为k8s的运行时
+containerd 的生态系统包括一系列与其集成的工具和组件，这些工具和组件扩展了 containerd 的功能并增强了其适用性。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/kubernetes-rong-qi-yun-zuo-xing-shi-%28CRI%20%29Containerd%20-de-xiang-guan-nei-rong.html">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
+<title>kubernetes容器运作行时(CRI )Containerd 的相关内容</title>
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">kubernetes容器运作行时(CRI )Containerd 的相关内容</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/3" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><h3>k8s运行时1.24版本起不再直接支持docker，通常我们会选择Containerd作为k8s的运行时</h3>
+<p>containerd 的生态系统包括一系列与其集成的工具和组件，这些工具和组件扩展了 containerd 的功能并增强了其适用性。</p>
+<p>• CRI 插件：与 Kubernetes 紧密集成，通过实现 Container Runtime Interface (CRI)，使 Kubernetes 能够管理容器。<br>
+• CNI 插件：使用 Container Network Interface (CNI) 插件进行网络管理，提供容器的网络连接。<br>
+• CSI 插件：Container Storage Interface (CSI) 插件用于存储管理，允许容器挂载和管理存储卷。<br>
+• 镜像管理：支持 Docker 镜像和 OCI 镜像规范，提供从<a href="https://cloud.tencent.com/product/tcr?from_column=20065&amp;from=20065" rel="nofollow">镜像仓库</a>拉取、存储和管理<a href="https://cloud.tencent.com/product/tcr?from_column=20065&amp;from=20065" rel="nofollow">容器镜像</a>的能力。<br>
+• 插件机制：允许通过插件扩展 containerd 的功能，满足特定的需求。</p>
+<h3>containerd 的优点及其在 k8s中的应用</h3>
+<p>containerd 是一个工业级的容器运行时，专为性能和稳定性设计。它提供了核心的容器管理功能，如镜像管理、容器执行和存储管理。containerd 的设计目标是简单、高效和与 k8s的深度集成。其主要优点包括：</p>
+<p>• 轻量级：containerd 是一个专注于核心功能的轻量级运行时，避免了不必要的复杂性。<br>
+• 性能高：containerd 在启动速度和资源使用方面表现出色，非常适合在高并发和大规模环境中使用。<br>
+• 稳定性：containerd 经过了广泛的测试和验证，具有很高的可靠性和稳定性。</p>
+<h3>选择 containerd 的原因分析</h3>
+<ol>
+<li>专注于核心功能：containerd 专注于容器管理的核心功能，避免了过多的功能堆积，保持了运行时的轻量和高效。</li>
+<li>深度集成：containerd 与 Kubernetes 的深度集成，使得 Kubernetes 可以更加高效地管理容器和镜像。</li>
+<li>社区支持：containerd 由 CNCF (Cloud Native Computing Foundation) 托管，得到了广泛的社区支持和贡献，确保了其长期的维护和发展。</li>
+<li>独立性：与 Docker 相比，containerd 更加独立，不依赖于其他工具或平台，减少了系统复杂性。</li>
+</ol>
+<h3>安装Containerd</h3>
+<ol>
+<li>下载 containerd release 包</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">wget https://github.com/containerd/containerd/releases/download/v1.7.24/cri-containerd-cni-1.7.24-linux-amd64.tar.gz</pre></div>
+<ol start="2">
+<li>解压 release 包</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">tar xf cri-containerd-cni-1.7.24-linux-amd64.tar.gz</pre></div>
+<ol start="3">
+<li>查看containerd安装位置<br>
+查看containerd.service文件，了解containerd文件安装位置：</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> cat etc/systemd/system/containerd.service</span>
+<span class="pl-c"><span class="pl-c">#</span> Copyright The containerd Authors.</span>
+<span class="pl-c"><span class="pl-c">#</span></span>
+<span class="pl-c"><span class="pl-c">#</span> Licensed under the Apache License, Version 2.0 (the "License");</span>
+<span class="pl-c"><span class="pl-c">#</span> you may not use this file except in compliance with the License.</span>
+<span class="pl-c"><span class="pl-c">#</span> You may obtain a copy of the License at</span>
+<span class="pl-c"><span class="pl-c">#</span></span>
+<span class="pl-c"><span class="pl-c">#</span>     http://www.apache.org/licenses/LICENSE-2.0</span>
+<span class="pl-c"><span class="pl-c">#</span></span>
+<span class="pl-c"><span class="pl-c">#</span> Unless required by applicable law or agreed to in writing, software</span>
+<span class="pl-c"><span class="pl-c">#</span> distributed under the License is distributed on an "AS IS" BASIS,</span>
+<span class="pl-c"><span class="pl-c">#</span> WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.</span>
+<span class="pl-c"><span class="pl-c">#</span> See the License for the specific language governing permissions and</span>
+<span class="pl-c"><span class="pl-c">#</span> limitations under the License.</span>
+
+[Unit]
+Description=containerd container runtime
+Documentation=https://containerd.io
+After=network.target local-fs.target dbus.service
+
+[Service]
+<span class="pl-c"><span class="pl-c">#</span>uncomment to enable the experimental sbservice (sandboxed) version of containerd/cri integration</span>
+<span class="pl-c"><span class="pl-c">#</span>Environment="ENABLE_CRI_SANDBOXES=sandboxed"</span>
+ExecStartPre=-/sbin/modprobe overlay
+ExecStart=/usr/local/bin/containerd		查看此位置,把containerd二进制文件放置于此处即可完成安装。
+
+Type=notify
+Delegate=yes
+KillMode=process
+Restart=always
+RestartSec=5
+<span class="pl-c"><span class="pl-c">#</span> Having non-zero Limit*s causes performance problems due to accounting overhead</span>
+<span class="pl-c"><span class="pl-c">#</span> in the kernel. We recommend using cgroups to do container-local accounting.</span>
+LimitNPROC=infinity
+LimitCORE=infinity
+LimitNOFILE=infinity
+<span class="pl-c"><span class="pl-c">#</span> Comment TasksMax if your systemd version does not supports it.</span>
+<span class="pl-c"><span class="pl-c">#</span> Only systemd 226 and above support this version.</span>
+TasksMax=infinity
+OOMScoreAdjust=-999
+
+[Install]
+WantedBy=multi-user.target</pre></div>
+<ol start="4">
+<li>复制containerd运行时文件至系统</li>
+</ol>
+<ul>
+<li>查看宿主机/usr/local/bin目录，里面没有任何内容。</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate">ls /usr/local/bin/</pre></div>
+<ul>
+<li>查看解压后usr/local/bin目录，里面包含containerd运行时文件</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> ls usr</span>
+<span class="pl-k">local</span>
+[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> ls usr/local/</span>
+bin  sbin
+[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> ls usr/local/bin</span>
+containerd  containerd-shim  containerd-shim-runc-v1  containerd-shim-runc-v2  containerd-stress  crictl  critest  ctd-decoder  ctr</pre></div>
+<ul>
+<li>复制containerd文件至/usr/local/bin目录中，本次可仅复制containerd一个文件也可复制全部文件。</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> cp usr/local/bin/containerd /usr/local/bin/</span></pre></div>
+<ol start="5">
+<li>添加containerd的service文件到系统</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span>cp etc/systemd/system/containerd.service /usr/lib/systemd/system/containerd.service</span></pre></div>
+<ol start="6">
+<li>配置Containerd所需的内核：</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> cat &lt;&lt;EOF | sudo tee /etc/sysctl.d/99-kubernetes-cri.conf</span>
+net.bridge.bridge-nf-call-iptables  = 1
+net.ipv4.ip_forward                 = 1
+net.bridge.bridge-nf-call-ip6tables = 1
+EOF</pre></div>
+<p>加载内核</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> sysctl --system</span></pre></div>
+<ol start="7">
+<li>生成默认配置文件</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> mkdir -p /etc/containerd</span>
+[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> containerd config default | tee /etc/containerd/config.toml</span></pre></div>
+<ol start="8">
+<li>启动Containerd，并配置开机自启动</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> systemctl daemon-reload</span>
+[root@k8s-master01 <span class="pl-k">~</span>]<span class="pl-c"><span class="pl-c">#</span> systemctl enable --now containerd</span></pre></div>
+<h3>containerd CLI 工具推荐</h3>
+<ul>
+<li>
+<p>ctr<br>
+定义和功能 ctr 是一个用于测试和调试 containerd 的轻量级 CLI 工具。它提供了一些基本的命令，可以用于快速验证 containerd 的功能。使用场景及实例 ctr 主要用于开发和测试环境，例如开发者需要验证 containerd 是否正确安装和配置时，可以使用 ctr 运行一些基本的测试命令。</p>
+</li>
+<li>
+<p>crictl<br>
+定义和功能 crictl 是一个<strong>用于与 Kubernetes CRI (Container Runtime Interface) 交互的 CLI 工具</strong>。它提供了一组命令，可以用于检查和管理通过 CRI 运行的容器和镜像。使用场景及实例 crictl 主要用于 Kubernetes 环境下的容器管理。例如，管理员可以使用 crictl 查看当前运行的容器、检查容器日志或执行容器操作。<br>
+crictl需要安装:</p>
+<ul>
+<li>到github地址为<a href="https://github.com/kubernetes-sigs/cri-tools/releases">crictl下载地址</a>安装自己需要的版本</li>
+<li>解压并安装</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate">   tar -C /usr/local/bin -xzf crictl-xxx.tar.gz</pre></div>
+<ul>
+<li>配置crictl客户端连接的运行时位置</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[root@k8s-master01 <span class="pl-k">~</span>]cat <span class="pl-k">&gt;</span> /etc/crictl.yaml <span class="pl-s"><span class="pl-k">&lt;&lt;</span><span class="pl-k">EOF</span></span>
+<span class="pl-s">    runtime-endpoint: unix:///run/containerd/containerd.sock</span>
+<span class="pl-s">    image-endpoint: unix:///run/containerd/containerd.sock</span>
+<span class="pl-s">    timeout: 10</span>
+<span class="pl-s">    debug: false</span>
+<span class="pl-s">    EOF</span></pre></div>
+</li>
+<li>
+<p>nerdctl<br>
+定义和功能 nerdctl 是专为 Containerd 设计的轻量级命令行工具，它的诞生旨在为那些从 Docker 转向 Containerd 的用户提供一个熟悉的操作界面。使用场景及实例 nerdctl 适合那些熟悉 Docker CLI 但希望使用 containerd 的用户。例如，开发者可以使用 nerdctl 来构建和运行容器，而不需要学习全新的命令集合。</p>
+</li>
+<li>
+<p>nerdctl 与 Docker 的区别：</p>
+</li>
+</ul>
+<ol>
+<li>底层与上层之别：最本质的区别在于，Docker 是一个包含了完整容器生命周期管理的平台，包含了 Docker daemon 等多个组件。而 nerdctl 是一个纯粹的命令行工具，专注于与 Containerd 交互，后者作为低层级运行时，处理容器和镜像的实际操作。</li>
+<li>兼容与创新：nerdctl 虽然兼容 Docker 的 CLI 习惯，但并不意味着它是 Docker 的简单复制品。它在兼容基础上引入了新功能，如延迟拉取镜像 (lazy-pulling) 和镜像加密等，这些是 Docker 本身不具备的。</li>
+<li>性能与效率：由于直接操作 Containerd，避免了 Docker daemon 这一层的额外开销，nerdctl 在某些场景下能提供更好的性能和资源利用率。</li>
+<li>定位差异：Docker 适合需要一站式解决方案的用户，而 nerdctl+Containerd 组合更适合那些追求轻量、高性能及与 Kubernetes 紧密集成的环境。</li>
+</ol>
+<h3>构建镜像</h3>
+<p>安装buildctl 及nerdctl</p>
+<ul>
+<li>
+<p>buildctl 安装方式</p>
+<ul>
+<li>下载预编译二进制文件：</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate"> [root@k8s-master01 <span class="pl-k">~</span>]wget https://github.com/moby/buildkit/releases/download/v0.19.0-rc2/buildkit-v0.19.0-rc2.darwin-arm64.tar.gz
+ [root@k8s-master01 <span class="pl-k">~</span>]mkdir /tmp/buildkit/
+ [root@k8s-master01 <span class="pl-k">~</span>]tar xf buildkit-v0.19.0-rc2.darwin-arm64.tar.gz -C /tmp/buildkit/
+ [root@k8s-master01 <span class="pl-k">~</span>]mv /tmp/buildkit/bin/<span class="pl-k">*</span> /usr/bin/</pre></div>
+<ul>
+<li>配置service文件</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate">cat /lib/systemd/system/buildkit.service
+<span class="pl-c"><span class="pl-c">#</span>########################################</span>
+[Unit]
+Description=BuildKit
+Requires=buildkit.socket
+After=buildkit.socket
+Documentation=https://github.com/moby/buildkit
+
+[Service]
+<span class="pl-c"><span class="pl-c">#</span> **注意这个地方的相关配置**</span>
+
+ExecStart=/usr/local/bin/buildkitd --oci-worker=false --containerd-worker=true
+
+[Install]
+WantedBy=multi-user.target
+</pre></div>
+<ul>
+<li>启动服务</li>
+</ul>
+<div class="highlight highlight-source-shell"><pre class="notranslate"> [root@k8s-master01 <span class="pl-k">~</span>]systemctl <span class="pl-c1">enable</span> buildkit.service
+ [root@k8s-master01 <span class="pl-k">~</span>]systemctl start buildkit.service
+</pre></div>
+</li>
+<li>
+<p>nerdctl 安装方式</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">  [root@k8s-master01 <span class="pl-k">~</span>]wget https://github.com/containerd/nerdctl/releases/download/v2.0.2/nerdctl-2.0.2-linux-arm64.tar.gz
+  [root@k8s-master01 <span class="pl-k">~</span>]tar xvf nerdctl-2.0.2-linux-arm64.tar.gz
+  [root@k8s-master01 <span class="pl-k">~</span>]cp nerdctl /usr/bin/
+ [root@k8s-master01 <span class="pl-k">~</span>]nerdctl version</pre></div>
+</li>
+<li>
+<p>构建镜像时有可能会出现镜像拉不到可以配置构建时的镜像<br>
+<strong>修改 BuildKit 配置文件</strong></p>
+<ol>
+<li>创建或编辑 BuildKit 配置文件：</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">sudo mkdir -p /etc/buildkit
+sudo vim /etc/buildkit/buildkitd.toml</pre></div>
+<ol start="2">
+<li>添加以下内容以设置国内镜像源（以阿里云为例）：</li>
+</ol>
+<div class="highlight highlight-source-shell"><pre class="notranslate">[registry.<span class="pl-s"><span class="pl-pds">"</span>docker.io<span class="pl-pds">"</span></span>]
+   mirrors = [<span class="pl-s"><span class="pl-pds">"</span>https://docker.1ms.run<span class="pl-pds">"</span></span>,<span class="pl-s"><span class="pl-pds">"</span>https://docker.nastool.de<span class="pl-pds">"</span></span>,<span class="pl-s"><span class="pl-pds">"</span>https://dockerpull.org<span class="pl-pds">"</span></span>]
+
+[registry.<span class="pl-s"><span class="pl-pds">"</span>quay.io<span class="pl-pds">"</span></span>]
+  mirrors = [<span class="pl-s"><span class="pl-pds">"</span>https://quay.m.daocloud.io<span class="pl-pds">"</span></span>]
+</pre></div>
+<p>当然你也可以用自己仓库的镜像去构建</p>
+<ol start="3">
+<li>保存并退出。</li>
+</ol>
+</li>
+</ul>
+<h3>Containerd 的镜像有命名空间划分</h3>
+<p>自己构建的镜像不存在于k8s所管理的命名空间下</p>
+<p><strong>列出所有命名空间</strong><br>
+<code class="notranslate">bash sudo ctr namespaces list </code></p>
+<p>​      示例输出：</p>
+<pre class="notranslate"><code class="notranslate">    default
+    k8s.io
+</code></pre>
+<p><strong>查看特定命名空间的镜像</strong></p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">    sudo ctr -n k8s.io images list
+    sudo ctr -n default images list</pre></div>
+<p>确保在 <code class="notranslate">k8s.io</code> 命名空间中查看与 Kubernetes 相关的镜像。<br>
+<strong>解决办法</strong>：<br>
+<strong>1. 使用 <code class="notranslate">--namespace</code> 参数指定命名空间</strong></p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">    nerdctl --namespace k8s.io build -t my-image:latest <span class="pl-c1">.</span></pre></div>
+<p>​      <strong>参数说明</strong><br>
+​          <code class="notranslate">--namespace k8s.io</code>：将镜像构建并存储到 <code class="notranslate">k8s.io</code> 命名空间中。<br>
+​          <code class="notranslate">-t my-image:latest</code>：为构建的镜像指定名称和标签。<br>
+​           <code class="notranslate">.</code>：构建上下文目录。<br>
+​       <strong>2. 设置默认命名空间</strong><br>
+​          如果需要始终在特定命名空间下操作，可以设置环境变量：</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">    <span class="pl-k">export</span> CONTAINERD_NAMESPACE=k8s.io</pre></div>
+<p>​         此后所有 <code class="notranslate">nerdctl</code> 命令都会默认使用 <code class="notranslate">k8s.io</code> 命名空间：<br>
+<code class="notranslate">bash nerdctl build -t my-image:latest .` </code></p>
+<p>​    <strong>3. 将镜像导入到指定命名空间</strong><br>
+​<br>
+​      如果需要将已有镜像导入到不同命名空间：<br>
+​</p>
+<p>​       1. <strong>导出镜像</strong>：</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">    nerdctl --namespace default save my-image:latest -o my-image.tar</pre></div>
+<p>​     2.  <strong>切换命名空间并导入镜像</strong>：</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">    nerdctl --namespace k8s.io load <span class="pl-k">&lt;</span> my-image.tar</pre></div>
+<p>​     3. <strong>使用 BuildKit 构建</strong></p>
+<p>结合 BuildKit 构建镜像时也可直接指定命名空间：</p>
+<div class="highlight highlight-source-shell"><pre class="notranslate">  nerdctl --namespace k8s.io build --buildkit-enabled -t my-buildkit-image:latest <span class="pl-c1">.</span></pre></div>
+<p><strong>总结</strong></p>
+<p>通过 <code class="notranslate">--namespace</code> 参数和环境变量设置，可以轻松指定和管理 <code class="notranslate">containerd</code> 中的命名空间。在 Kubernetes 环境下使用 <code class="notranslate">k8s.io</code> 命名空间有助于与 Kubernetes 管理的容器镜像保持一致，从而提升构建和管理的灵活性与一致性。</p>
+<h3>也可以配置containerd的镜像源</h3>
+<p>​     参考如下：<a href="https://zhuanlan.zhihu.com/p/702497587" rel="nofollow">containerd的镜像源设置方式</a></p></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">宏渊的技术博客</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行"+diffDay+"天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+cmButton=document.getElementById("cmButton");
+    span=document.createElement("span");
+    span.setAttribute("class","Counter");
+    span.innerHTML="1";
+    cmButton.appendChild(span);
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+<script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
+
+</html>
