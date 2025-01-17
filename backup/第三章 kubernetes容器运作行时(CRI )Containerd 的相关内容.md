@@ -293,3 +293,4 @@ crictl需要安装:
 
 ### 也可以配置containerd的镜像源
 ​     参考如下：[containerd的镜像源设置方式](https://zhuanlan.zhihu.com/p/702497587)
+     容器等镜像源参考地址：[容器等镜像源参考](https://github.com/DaoCloud/public-image-mirror?tab=readme-ov-file)
