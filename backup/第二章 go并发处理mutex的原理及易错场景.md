@@ -189,7 +189,7 @@ func (m *Mutex) unlockSlow(new int32) {
 
 <img width="768" alt="Image" src="https://github.com/user-attachments/assets/703d09c2-70c4-48bc-9e02-0b55016acb12" />
 
-## 使用互斥锁的四种易错场景
+## 使用互斥锁的易错场景
 ### Lock/Unlock 没有成对出现
 Lock/Unlock 没有成对出现，就意味着会出现死锁的情况，或者是因为 Unlock 一个未加锁的 Mutex 而导致 panic。
 缺少 Unlock 的场景，常见的有三种情况：
