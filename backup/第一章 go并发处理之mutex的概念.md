@@ -105,7 +105,9 @@ func main() {
 }
 ```
 可以尝试运行发现结果每次可能都不一样
-![Image](https://github.com/user-attachments/assets/cd54d829-2777-463d-8a4e-89a9495a6763)
+
+![Image](https://github.com/user-attachments/assets/af42f84c-b3fa-4808-8c9e-52f706dc4515)
+
 我们使用 sync.WaitGroup 来等待所有的 goroutine 执行完毕后，再输出最终的结果。sync.WaitGroup 这个同步原语我会在后面的课程中具体介绍，现在你只需要知道，我们使用它来控制等待一组 goroutine 全部做完任务。
 
 但是，每次运行，你都可能得到不同的结果，基本上不会得到理想中的1000的结果。
@@ -120,7 +122,8 @@ func main() {
 
 在编译（compile）、测试（test）、运行（run）Go 代码的时候，加上 race 参数，就有可能发现并发问题。比如在上面的例子中，我们可以加上 race 参数运行，检测一下是不是有并发问题。如果你 go run -race counter.go，就会输出警告信息。
 
-![Image](https://github.com/user-attachments/assets/ad02fda7-d7de-4809-ae69-46dda7bf4054)
+![Image](https://github.com/user-attachments/assets/097ae0c3-9aaa-461c-bbf7-adb481f8c516)
+
 这个警告不但会告诉你有并发问题，而且还会告诉你哪个 goroutine 在哪一行对哪个变量有写操作，同时，哪个 goroutine 在哪一行对哪个变量有读操作，就是这些并发的读写访问，引起了 data race。
 
 可以把获取锁、释放锁、计数加一的逻辑封装成一个方法，对外不需要暴露锁等逻辑：
