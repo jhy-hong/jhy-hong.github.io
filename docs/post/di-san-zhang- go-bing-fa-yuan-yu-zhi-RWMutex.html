@@ -1,0 +1,503 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    
+    <link rel="icon" href="https://github.githubassets.com/favicons/favicon.svg"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="之前学习过Mutex，互斥锁，它可以保证读写安全的互斥性，无论是读还是写，Mutex都能保证**只有一个**goroutine访问共享资源，但这在某些情况下比较浪费资源，比如读多写少的情况下。">
+<meta property="og:title" content="第三章 go并发原语之RWMutex">
+<meta property="og:description" content="之前学习过Mutex，互斥锁，它可以保证读写安全的互斥性，无论是读还是写，Mutex都能保证**只有一个**goroutine访问共享资源，但这在某些情况下比较浪费资源，比如读多写少的情况下。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/di-san-zhang-%20go-bing-fa-yuan-yu-zhi-RWMutex.html">
+<meta property="og:image" content="https://github.githubassets.com/favicons/favicon.svg">
+<title>第三章 go并发原语之RWMutex</title>
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">第三章 go并发原语之RWMutex</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/3" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><p>之前学习过Mutex，互斥锁，它可以保证读写安全的互斥性，无论是读还是写，Mutex都能保证<strong>只有一个</strong>goroutine访问共享资源，但这在某些情况下比较浪费资源，比如读多写少的情况下。在一段时间内没有写操作，但读还是加锁进行的，这在某些方面就不能合理的使用我们的cpu资源。大量并发的读访问也不得不在 Mutex 的保护下变成了串行访问，这个时候，使用 Mutex，对性能的影响就比较大。</p>
+<p>那该怎么去解决呢？区分读写操作，就有了我们的RWMutex。</p>
+<p>具体可以这样理解，当一个读操作的goroutine持有锁时，其他goroutine不必像之前那样傻傻的等待，而是也可以并发的访问共享变量，<strong>串行读变成并行读</strong>，很大程度提升了读操作的性能。当一个写操作的goroutine持有锁时，它就是一个排他锁，其他所有写操作和读操作的goroutine都会阻塞等待持有这个写操作的gortouine释放锁。</p>
+<p>这一类并发读写问题叫作<a href="https://en.wikipedia.org/wiki/Readers%E2%80%93writers_problem" rel="nofollow">readers-writers</a> 问题，意思就是，同时可能有多个读或者多个写，但是只要有一个线程在执行写操作，其它的线程都不能执行读写操作。</p>
+<h2>RWMutex的相关定义</h2>
+<p>标准库中的 RWMutex 是一个 reader/writer 互斥锁。RWMutex 在某一时刻只能由<strong>任意数量的 reader 持有</strong>，或者是只被单个的 writer 持有。</p>
+<p>readers-writers 问题一般有三类，基于对读和写操作的优先级，读写锁的设计和实现也分成三类。</p>
+<ul>
+<li>第一类：<strong>读者优先（Readers Preference）</strong><br>
+只要有读协程 持有锁会一直进行读，阻塞写操作协程，写者可能“饥饿”，永远得不到写锁（如果读协程 持续到来）。</li>
+<li>第二类：<strong>写者优先（Writers Preference）</strong><br>
+如果已经有一个 <strong>写协程</strong>在等待请求锁的话，它会阻止新来的请求锁的 <strong>读协程</strong> 获取到锁，所以优先保障 <strong>写协程</strong>。当然，如果有一些 <strong>读协程</strong> 已经<strong>请求了锁</strong>的话，新请求的 <strong>写协程</strong> 也会等待已经存在的 <strong>读协程</strong> 都释放锁之后才能获取。所以，<strong>写优先级设计中的优先权是针对新来的请求而言的</strong>。<strong>这种设计主要避免了 写协程 的饥饿问题</strong>。</li>
+<li>第三类：<strong>公平策略 / 无优先级（Fair or No Starvation）</strong><br>
+这种设计比较简单，不区分 读协程 和 写协程 优先级，某些场景下这种不指定优先级的设计反而更有效，因为第一类优先级会导致写饥饿，第二类优先级可能会导致读饥饿，这种不指定优先级的访问不再区分读写，大家都是同一个优先级，解决了饥饿的问题。</li>
+</ul>
+<h3>RWMutex的方法只有五个</h3>
+<ul>
+<li>Lock/Unlock：写操作时调用的方法。如果锁已经被 reader 或者 writer 持有，那么，Lock 方法会一直阻塞，直到能获取到锁；Unlock 则是配对的释放锁的方法。</li>
+<li>RLock/RUnlock：读操作时调用的方法。如果锁已经被 writer 持有的话，RLock 方法会一直阻塞，直到能获取到锁，否则就直接返回；而 RUnlock 是 reader 释放锁的方法。</li>
+<li>RLocker：这个方法的作用是为读操作返回一个 Locker 接口的对象。它的 Lock 方法会调用 RWMutex 的 RLock 方法，它的 Unlock 方法会调用 RWMutex 的 RUnlock 方法。</li>
+</ul>
+<ol>
+<li><code class="notranslate">func (rw *RWMutex) Lock()</code></li>
+</ol>
+<ul>
+<li><strong>用途</strong>：获取<strong>写锁</strong>。</li>
+<li><strong>行为</strong>：会阻塞，直到没有其他读锁或写锁存在。</li>
+<li><strong>作用域</strong>：写锁是<strong>独占的</strong>，期间任何读锁或写锁都不能获取。</li>
+</ul>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">rw</span>.<span class="pl-c1">Lock</span>()
+<span class="pl-c">// 临界区：写操作</span>
+<span class="pl-s1">rw</span>.<span class="pl-c1">Unlock</span>()</pre></div>
+<ol start="2">
+<li><code class="notranslate">func (rw *RWMutex) Unlock()</code></li>
+</ol>
+<ul>
+<li><strong>用途</strong>：释放之前通过 <code class="notranslate">Lock()</code> 获取的写锁。</li>
+<li><strong>注意</strong>：只能在调用过 <code class="notranslate">Lock()</code> 后调用，否则会导致 panic。</li>
+</ul>
+<ol start="3">
+<li><code class="notranslate">func (rw *RWMutex) RLock()</code></li>
+</ol>
+<ul>
+<li><strong>用途</strong>：获取<strong>读锁</strong>。</li>
+<li><strong>行为</strong>：多个 goroutine 可以同时持有读锁，只要没有写锁被持有。</li>
+<li><strong>阻塞条件</strong>：如果当前有写锁（正在被写 goroutine 持有），读锁会阻塞等待。</li>
+</ul>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">rw</span>.<span class="pl-c1">RLock</span>()
+<span class="pl-c">// 临界区：只读操作</span>
+<span class="pl-s1">rw</span>.<span class="pl-c1">RUnlock</span>()</pre></div>
+<ol start="4">
+<li><code class="notranslate">func (rw *RWMutex) RUnlock()</code></li>
+</ol>
+<ul>
+<li><strong>用途</strong>：释放通过 <code class="notranslate">RLock()</code> 获取的读锁。</li>
+<li><strong>注意</strong>：
+<ul>
+<li>每个 <code class="notranslate">RLock()</code> 必须对应一次 <code class="notranslate">RUnlock()</code>。</li>
+<li>多次 <code class="notranslate">RUnlock()</code> 会导致 panic。</li>
+</ul>
+</li>
+</ul>
+<hr>
+<h2>🔁 使用示例：</h2>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">var</span> <span class="pl-s1">rw</span> sync.<span class="pl-smi">RWMutex</span>
+<span class="pl-k">var</span> <span class="pl-s1">shared</span> <span class="pl-smi">int</span>
+
+<span class="pl-c">// 写者</span>
+<span class="pl-k">go</span> <span class="pl-k">func</span>() {
+    <span class="pl-s1">rw</span>.<span class="pl-c1">Lock</span>()
+    <span class="pl-s1">shared</span> <span class="pl-c1">+=</span> <span class="pl-c1">1</span>
+    <span class="pl-s1">rw</span>.<span class="pl-c1">Unlock</span>()
+}()
+
+<span class="pl-c">// 读者</span>
+<span class="pl-k">go</span> <span class="pl-k">func</span>() {
+    <span class="pl-s1">rw</span>.<span class="pl-c1">RLock</span>()
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">shared</span>)
+    <span class="pl-s1">rw</span>.<span class="pl-c1">RUnlock</span>()
+}()</pre></div>
+<ol start="5">
+<li>RLocker：这个方法的作用是为读操作返回一个 Locker 接口的对象。它的 Lock 方法会调用 RWMutex 的 RLock 方法，它的 Unlock 方法会调用 RWMutex 的 RUnlock 方法。</li>
+</ol>
+<p>另外一个比较完整的例子。<br>
+如何使用 RWMutex 保护共享资源。计数器的 count++操作是写操作，而获取 count 的值是读操作，这个场景非常适合读写锁，因为读操作可以并行执行，写操作时只允许一个线程执行，这正是 readers-writers 问题。</p>
+<p>在这个例子中，使用 10 个 goroutine 进行读操作，每读取一次，sleep 1 毫秒，同时，还有一个 gorotine 进行写操作，每一秒写一次，这是一个 1 writer-n reader 的读写场景，而且写操作还不是很频繁（一秒一次）：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-k">var</span> <span class="pl-s1">counter</span> <span class="pl-smi">Counter</span>
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">10</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> { <span class="pl-c">// 10个reader</span>
+        <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+            <span class="pl-k">for</span> {
+                <span class="pl-s1">counter</span>.<span class="pl-c1">Count</span>() <span class="pl-c">// 计数器读操作</span>
+                <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-s1">time</span>.<span class="pl-c1">Millisecond</span>)
+            }
+        }()
+    }
+
+    <span class="pl-k">for</span> { <span class="pl-c">// 一个writer</span>
+        <span class="pl-s1">counter</span>.<span class="pl-c1">Incr</span>() <span class="pl-c">// 计数器写操作</span>
+        <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+    }
+}
+<span class="pl-c">// 一个线程安全的计数器</span>
+<span class="pl-k">type</span> <span class="pl-smi">Counter</span> <span class="pl-k">struct</span> {
+    <span class="pl-c1">mu</span>    sync.<span class="pl-smi">RWMutex</span>
+    <span class="pl-c1">count</span> <span class="pl-smi">uint64</span>
+}
+
+<span class="pl-c">// 使用写锁保护</span>
+<span class="pl-k">func</span> (<span class="pl-s1">c</span> <span class="pl-c1">*</span><span class="pl-smi">Counter</span>) <span class="pl-c1">Incr</span>() {
+    <span class="pl-s1">c</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Lock</span>()
+    <span class="pl-s1">c</span>.<span class="pl-c1">count</span><span class="pl-c1">++</span>
+    <span class="pl-s1">c</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Unlock</span>()
+}
+
+<span class="pl-c">// 使用读锁保护</span>
+<span class="pl-k">func</span> (<span class="pl-s1">c</span> <span class="pl-c1">*</span><span class="pl-smi">Counter</span>) <span class="pl-c1">Count</span>() <span class="pl-smi">uint64</span> {
+    <span class="pl-s1">c</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">RLock</span>()
+    <span class="pl-k">defer</span> <span class="pl-s1">c</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">RUnlock</span>()
+    <span class="pl-k">return</span> <span class="pl-s1">c</span>.<span class="pl-c1">count</span>
+}</pre></div>
+<p>可以看到，Incr 方法会修改计数器的值，是一个写操作，我们使用 Lock/Unlock 进行保护。Count 方法会读取当前计数器的值，是一个读操作，我们使用 RLock/RUnlock 方法进行保护。Incr 方法每秒才调用一次，所以，writer 竞争锁的频次是比较低的，而 10 个 goroutine 每毫秒都要执行一次查询，通过读写锁，可以极大提升计数器的的性能，因为在读取的时候，可以并发进行。如果使用 Mutex，性能就不会像读写锁这么好。因为多个 reader 并发读的时候，使用互斥锁导致了 reader 要排队读的情况，没有 RWMutex 并发读的性能好。</p>
+<p><strong>如果你遇到可以明确区分 reader 和 writer goroutine 的场景，且有大量的并发读、少量的并发写，并且有强烈的性能需求，你就可以考虑使用读写锁 RWMutex 替换 Mutex。</strong></p>
+<h3>RWMutex的实现原理</h3>
+<p>Go 标准库中的 RWMutex 是基于 Mutex 实现的。</p>
+<p>看一下RWMutex的相关定义。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">RWMutex</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">w</span>           <span class="pl-smi">Mutex</span>        <span class="pl-c">// held if there are pending writers // 互斥锁解决多个writer的竞争</span>
+	<span class="pl-c1">writerSem</span>   <span class="pl-smi">uint32</span>       <span class="pl-c">// semaphore for writers to wait for completing readers // writer信号量</span>
+	<span class="pl-c1">readerSem</span>   <span class="pl-smi">uint32</span>       <span class="pl-c">// semaphore for readers to wait for completing writers // reader信号量</span>
+	<span class="pl-c1">readerCount</span> atomic.<span class="pl-smi">Int32</span> <span class="pl-c">// number of pending readers  // reader的数量</span>
+	<span class="pl-c1">readerWait</span>  atomic.<span class="pl-smi">Int32</span> <span class="pl-c">// number of departing readers // writer等待完成的reader的数量</span>
+}
+
+<span class="pl-k">const</span> <span class="pl-s1">rwmutexMaxReaders</span> <span class="pl-c1">=</span> <span class="pl-c1">1</span> <span class="pl-c1">&lt;&lt;</span> <span class="pl-c1">30</span></pre></div>
+<p>简单解释一下这几个字段。</p>
+<ul>
+<li>字段 w：为 writer 的竞争锁而设计；</li>
+<li>字段 readerCount：记录当前 reader 的数量（以及是否有 writer 竞争锁）；</li>
+<li>readerWait：记录 writer 请求锁时需要等待 read 完成的 reader 的数量；</li>
+<li>writerSem 和 readerSem：都是为了阻塞设计的信号量。</li>
+</ul>
+<p>这里的常量 rwmutexMaxReaders，定义了最大的 reader 数量。</p>
+<h4>RLock/RUnlock 的实现</h4>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> (<span class="pl-s1">rw</span> <span class="pl-c1">*</span><span class="pl-smi">RWMutex</span>) <span class="pl-c1">RLock</span>() {
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Read</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">w</span>))
+		<span class="pl-s1">race</span>.<span class="pl-c1">Disable</span>()
+	}
+	<span class="pl-k">if</span> <span class="pl-s1">rw</span>.<span class="pl-c1">readerCount</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>) <span class="pl-c1">&lt;</span> <span class="pl-c1">0</span> {
+        <span class="pl-c">// rw.readerCount是负值的时候，意味着此时有writer等待请求锁，因为writer优先级高，所以把后来的reader阻塞休眠</span>
+		<span class="pl-c">// A writer is pending, wait for it.</span>
+		<span class="pl-s1">runtime_SemacquireRWMutexR</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">readerSem</span>, <span class="pl-c1">false</span>, <span class="pl-c1">0</span>)
+	}
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+		<span class="pl-s1">race</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">readerSem</span>))
+	}
+}
+<span class="pl-k">func</span> (<span class="pl-s1">rw</span> <span class="pl-c1">*</span><span class="pl-smi">RWMutex</span>) <span class="pl-c1">RUnlock</span>() {
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Read</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">w</span>))
+		<span class="pl-s1">race</span>.<span class="pl-c1">ReleaseMerge</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">writerSem</span>))
+		<span class="pl-s1">race</span>.<span class="pl-c1">Disable</span>()
+	}
+	<span class="pl-k">if</span> <span class="pl-s1">r</span> <span class="pl-c1">:=</span> <span class="pl-s1">rw</span>.<span class="pl-c1">readerCount</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">-</span><span class="pl-c1">1</span>); <span class="pl-s1">r</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">0</span> {
+		<span class="pl-c">// Outlined slow-path to allow the fast-path to be inlined</span>
+		<span class="pl-s1">rw</span>.<span class="pl-c1">rUnlockSlow</span>(<span class="pl-s1">r</span>)  <span class="pl-c">// 有等待的writer</span>
+	}
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+	}
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">rw</span> <span class="pl-c1">*</span><span class="pl-smi">RWMutex</span>) <span class="pl-c1">rUnlockSlow</span>(<span class="pl-s1">r</span> <span class="pl-smi">int32</span>) {
+	<span class="pl-k">if</span> <span class="pl-s1">r</span><span class="pl-c1">+</span><span class="pl-c1">1</span> <span class="pl-c1">==</span> <span class="pl-c1">0</span> <span class="pl-c1">||</span> <span class="pl-s1">r</span><span class="pl-c1">+</span><span class="pl-c1">1</span> <span class="pl-c1">==</span> <span class="pl-c1">-</span><span class="pl-s1">rwmutexMaxReaders</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+		<span class="pl-s1">fatal</span>(<span class="pl-s">"sync: RUnlock of unlocked RWMutex"</span>)
+	}
+	<span class="pl-c">// A writer is pending.</span>
+	<span class="pl-k">if</span> <span class="pl-s1">rw</span>.<span class="pl-c1">readerWait</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">-</span><span class="pl-c1">1</span>) <span class="pl-c1">==</span> <span class="pl-c1">0</span> {
+        <span class="pl-c">// 最后一个reader了，writer终于有机会获得锁了</span>
+		<span class="pl-c">// The last reader unblocks the writer.</span>
+		<span class="pl-s1">runtime_Semrelease</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">writerSem</span>, <span class="pl-c1">false</span>, <span class="pl-c1">1</span>)
+	}
+}</pre></div>
+<p><code class="notranslate">if rw.readerCount.Add(1) &lt; 0</code> 对 reader 计数加 1。可能比较疑惑，readerCount怎么可能是负数？其实readerCount是有两层含义的。</p>
+<ol>
+<li>没有 writer 竞争或持有锁时，readerCount 和我们正常理解的 reader 的计数是一样的；</li>
+<li>但是，如果有 writer 竞争锁或者持有锁时，那么，readerCount 不仅仅承担着 reader 的计数功能，还能够标识当前是否有 writer 竞争或持有锁，在这种情况下，请求锁的 reader 的处理进入第 4 行，阻塞等待锁的释放。</li>
+</ol>
+<p>调用 RUnlock 的时候，我们需要将 Reader 的计数减去 1 <code class="notranslate">if r := rw.readerCount.Add(-1); r &lt; 0</code> ，因为 reader 的数量减少了一个。但是，rw.readerCount.Add 的返回值还有另外一个含义。如果它是负值，就表示当前有 writer 竞争锁，在这种情况下，还会调用 rUnlockSlow 方法，检查是不是 reader 都释放读锁了，如果读锁都释放了，那么可以唤醒请求写锁的 writer 了。</p>
+<p>当一个或者多个 reader 持有锁的时候，竞争锁的 writer 会等待这些 reader 释放完，才可能持有这把锁。当 writer 请求锁的时候，是无法改变既有的 reader 持有锁的现实的，也不会强制这些 reader 释放锁，它的优先权只是限定后来的 reader 不要和它抢。</p>
+<h4>Lock/Unlock</h4>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> (<span class="pl-s1">rw</span> <span class="pl-c1">*</span><span class="pl-smi">RWMutex</span>) <span class="pl-c1">Lock</span>() {
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Read</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">w</span>))
+		<span class="pl-s1">race</span>.<span class="pl-c1">Disable</span>()
+	}
+	<span class="pl-c">// First, resolve competition with other writers. 首先解决其他writer竞争问题</span>
+	<span class="pl-s1">rw</span>.<span class="pl-c1">w</span>.<span class="pl-c1">Lock</span>()
+	<span class="pl-c">// Announce to readers there is a pending writer. 反转readerCount，告诉reader有writer竞争锁</span>
+	<span class="pl-s1">r</span> <span class="pl-c1">:=</span> <span class="pl-s1">rw</span>.<span class="pl-c1">readerCount</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">-</span><span class="pl-s1">rwmutexMaxReaders</span>) <span class="pl-c1">+</span> <span class="pl-s1">rwmutexMaxReaders</span>
+	<span class="pl-c">// Wait for active readers.如果当前有reader持有锁，那么需要等待</span>
+	<span class="pl-k">if</span> <span class="pl-s1">r</span> <span class="pl-c1">!=</span> <span class="pl-c1">0</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">rw</span>.<span class="pl-c1">readerWait</span>.<span class="pl-c1">Add</span>(<span class="pl-s1">r</span>) <span class="pl-c1">!=</span> <span class="pl-c1">0</span> {
+		<span class="pl-s1">runtime_SemacquireRWMutex</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">writerSem</span>, <span class="pl-c1">false</span>, <span class="pl-c1">0</span>)
+	}
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+		<span class="pl-s1">race</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">readerSem</span>))
+		<span class="pl-s1">race</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">writerSem</span>))
+	}
+}
+<span class="pl-k">func</span> (<span class="pl-s1">rw</span> <span class="pl-c1">*</span><span class="pl-smi">RWMutex</span>) <span class="pl-c1">Unlock</span>() {
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Read</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">w</span>))
+		<span class="pl-s1">race</span>.<span class="pl-c1">Release</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">readerSem</span>))
+		<span class="pl-s1">race</span>.<span class="pl-c1">Disable</span>()
+	}
+
+	<span class="pl-c">// Announce to readers there is no active writer. 告诉reader没有活跃的writer了</span>
+	<span class="pl-s1">r</span> <span class="pl-c1">:=</span> <span class="pl-s1">rw</span>.<span class="pl-c1">readerCount</span>.<span class="pl-c1">Add</span>(<span class="pl-s1">rwmutexMaxReaders</span>)
+	<span class="pl-k">if</span> <span class="pl-s1">r</span> <span class="pl-c1">&gt;=</span> <span class="pl-s1">rwmutexMaxReaders</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+		<span class="pl-s1">fatal</span>(<span class="pl-s">"sync: Unlock of unlocked RWMutex"</span>)
+	}
+	<span class="pl-c">// Unblock blocked readers, if any. 唤醒阻塞的reader们</span>
+	<span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">int</span>(<span class="pl-s1">r</span>); <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+		<span class="pl-s1">runtime_Semrelease</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">rw</span>.<span class="pl-c1">readerSem</span>, <span class="pl-c1">false</span>, <span class="pl-c1">0</span>)
+	}
+	<span class="pl-c">// Allow other writers to proceed. 释放内部的互斥锁</span>
+	<span class="pl-s1">rw</span>.<span class="pl-c1">w</span>.<span class="pl-c1">Unlock</span>()
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+	}
+}</pre></div>
+<p>如果 readerCount 不是 0，就说明当前有持有读锁的 reader，RWMutex 需要把这个当前 readerCount 赋值给 readerWait 字段保存下来 <code class="notranslate">if r != 0 &amp;&amp; rw.readerWait.Add(r) != 0）</code>，</p>
+<p>同时，这个 writer 进入阻塞等待状<code class="notranslate">runtime_SemacquireRWMutex(&amp;rw.writerSem, false, 0)</code></p>
+<p>每当一个 reader 释放读锁的时候（调用 RUnlock 方法时），readerWait 字段就减 1，直到所有的活跃的 reader 都释放了读锁，才会唤醒这个 writer。</p>
+<p>当一个 writer 释放锁的时候，它会再次反转 readerCount 字段。可以肯定的是，因为当前锁由 writer 持有，所以，readerCount 字段是反转过的，并且减去了 rwmutexMaxReaders 这个常数，变成了负数。所以，这里的反转方法就是给它增加 rwmutexMaxReaders 这个常数值。</p>
+<h3>RWMutex的三个踩坑点</h3>
+<ol>
+<li>不可复制</li>
+</ol>
+<p>和 Mutex 一样，RWMutex 也是不可复制。不能复制的原因和互斥锁一样。一旦读写锁被使用，它的字段就会记录它当前的一些状态。这个时候你去复制这把锁，就会把它的状态也给复制过来。但是，原来的锁在释放的时候，并不会修改你复制出来的这个读写锁，这就会导致复制出来的读写锁的状态不对，可能永远无法释放锁。</p>
+<ol start="2">
+<li>不可重入</li>
+</ol>
+<p>不可重入的原因是，获得锁之后，还没释放锁，又申请锁，这样有可能造成死锁。比如 reader A 获取到了读锁，writer B 等待 reader A 释放锁，reader 还没释放锁又申请了一把锁，但是这把锁申请不成功，他需要等待 writer B。这就形成了一个循环等待的死锁。</p>
+<ol start="3">
+<li>加锁和释放锁一定要成对出现，不能忘记释放锁，也不能解锁一个未加锁的锁。</li>
+</ol></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">Blog Title</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行"+diffDay+"天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+
+
+</html>
