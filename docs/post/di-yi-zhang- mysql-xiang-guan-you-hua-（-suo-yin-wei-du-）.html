@@ -1,0 +1,1490 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekVercount.js'></script>
+    <link rel="icon" href="https://avatars.githubusercontent.com/u/59826062?v=4"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="## mysql相关优化（索引维度）
+
+### 建表测试
+
+先设计几张表，用户表 `users`，商品表 `products`，订单表 `orders`,订单明细表 `order_items`
+
+用户表 `users`
+
+```sql
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
+    username VARCHAR(64) NOT NULL UNIQUE COMMENT '用户名',
+    email VARCHAR(128) NOT NULL COMMENT '邮箱',
+    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+```
+
+商品表 `products`
+
+```sql
+CREATE TABLE products (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '商品ID',
+    name VARCHAR(128) NOT NULL COMMENT '商品名称',
+    category VARCHAR(64) DEFAULT NULL COMMENT '分类',
+    price DECIMAL(10, 2) NOT NULL COMMENT '价格',
+    stock INT NOT NULL DEFAULT 0 COMMENT '库存',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上架时间',
+    INDEX idx_category_price (category, price)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+```
+
+订单表 `orders`
+
+```sql
+CREATE TABLE orders (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '订单ID',
+    user_id BIGINT NOT NULL COMMENT '下单用户ID',
+    order_no VARCHAR(64) NOT NULL UNIQUE COMMENT '订单号',
+    status TINYINT NOT NULL DEFAULT 0 COMMENT '订单状态 0-待支付 1-已支付 2-已发货 3-完成',
+    total_amount DECIMAL(10,2) NOT NULL COMMENT '订单总额',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '下单时间',
+    INDEX idx_user_created (user_id, created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+```
+
+订单明细表 `order_items`
+
+```sql
+CREATE TABLE order_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '明细ID',
+    order_id BIGINT NOT NULL COMMENT '订单ID',
+    product_id BIGINT NOT NULL COMMENT '商品ID',
+    quantity INT NOT NULL COMMENT '购买数量',
+    price DECIMAL(10,2) NOT NULL COMMENT '单价',
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    INDEX idx_order_product (order_id, product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+### 生成大量数据以供测试
+
+生成测试的数据，可以使用sql脚本，python脚本等
+
+批量生成 `users` 数据（10 万条）
+
+```sql
+START TRANSACTION;
+
+INSERT INTO users (username, email, phone, created_at)
+SELECT
+  CONCAT('user_', LPAD(id, 6, '0')),
+  CONCAT('user_', LPAD(id, 6, '0'), '@example.com'),
+  CONCAT('13', LPAD(FLOOR(RAND()*100000000), 8, '0')),
+  NOW() - INTERVAL FLOOR(RAND()*365) DAY
+FROM (
+  SELECT @rownum := @rownum + 1 AS id
+  FROM information_schema.COLUMNS a, information_schema.COLUMNS b, (SELECT @rownum := 0) r
+  LIMIT 100000
+) AS temp;
+
+COMMIT;
+
+```
+
+批量生成 `products` 数据（1000 条）
+
+```sql
+START TRANSACTION;
+
+INSERT INTO products (name, category, price, stock, created_at)
+SELECT
+  CONCAT('商品_', LPAD(id, 4, '0')),
+  ELT(FLOOR(1 + (RAND() * 5)), '数码', '图书', '服饰', '家居', '食品'),
+  ROUND(50 + RAND() * 950, 2),
+  FLOOR(100 + RAND() * 900),
+  NOW() - INTERVAL FLOOR(RAND()*180) DAY
+FROM (
+  SELECT @pid := @pid + 1 AS id
+  FROM information_schema.COLUMNS a, (SELECT @pid := 0) r
+  LIMIT 1000
+) AS temp;
+
+COMMIT;
+
+```
+
+批量生成 `orders` 数据（每用户 1~3 个订单）
+
+```sql
+-- 模拟循环插入
+DELIMITER $$
+
+CREATE PROCEDURE generate_orders()
+BEGIN
+  DECLARE i INT DEFAULT 0;
+  WHILE i < 200000 DO
+    INSERT INTO orders (user_id, order_no, status, total_amount, created_at)
+    SELECT
+      FLOOR(1 + RAND() * 100000),
+      CONCAT('ORD_', LPAD(FLOOR(RAND() * 10000000), 7, '0')),
+      FLOOR(RAND() * 4),
+      ROUND(50 + RAND() * 1000, 2),
+      NOW() - INTERVAL FLOOR(RAND() * 60) DAY;
+    SET i = i + 1;
+  END WHILE;
+END$$
+
+DELIMITER ;
+
+CALL generate_orders();
+
+```
+
+批量生成 `order_items` 数据（每订单 1~3 个商品）
+
+```sql
+START TRANSACTION;
+
+INSERT INTO order_items (order_id, product_id, quantity, price)
+SELECT
+  FLOOR(1 + (RAND() * 200000)), -- 订单 ID 范围
+  FLOOR(1 + (RAND() * 1000)),   -- 商品 ID 范围
+  FLOOR(1 + RAND()*5),
+  ROUND(50 + RAND()*950, 2)
+FROM (
+  SELECT @oiid := @oiid + 1 AS id
+  FROM information_schema.COLUMNS a, information_schema.COLUMNS b, (SELECT @oiid := 0) r
+  LIMIT 500000
+) AS temp;
+
+COMMIT;
+
+```
+
+## 开始测试相关优化项
+
+我们尝试执行一下
+
+```sql
+EXPLAIN SELECT * FROM users WHERE phone = '1302706965';
+```
+
+发现其执行计划如下：
+
+![Image](https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533)
+
+###  `EXPLAIN` 字段详细解释
+
+| 字段名            | 含义                                             | 优化建议                               |
+| ----------------- | ------------------------------------------------ | -------------------------------------- |
+| **id**            | 查询中语句块的标识编号。">
+<meta property="og:title" content="第一章 mysql相关优化（索引维度）">
+<meta property="og:description" content="## mysql相关优化（索引维度）
+
+### 建表测试
+
+先设计几张表，用户表 `users`，商品表 `products`，订单表 `orders`,订单明细表 `order_items`
+
+用户表 `users`
+
+```sql
+CREATE TABLE users (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
+    username VARCHAR(64) NOT NULL UNIQUE COMMENT '用户名',
+    email VARCHAR(128) NOT NULL COMMENT '邮箱',
+    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+```
+
+商品表 `products`
+
+```sql
+CREATE TABLE products (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '商品ID',
+    name VARCHAR(128) NOT NULL COMMENT '商品名称',
+    category VARCHAR(64) DEFAULT NULL COMMENT '分类',
+    price DECIMAL(10, 2) NOT NULL COMMENT '价格',
+    stock INT NOT NULL DEFAULT 0 COMMENT '库存',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上架时间',
+    INDEX idx_category_price (category, price)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+
+```
+
+订单表 `orders`
+
+```sql
+CREATE TABLE orders (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '订单ID',
+    user_id BIGINT NOT NULL COMMENT '下单用户ID',
+    order_no VARCHAR(64) NOT NULL UNIQUE COMMENT '订单号',
+    status TINYINT NOT NULL DEFAULT 0 COMMENT '订单状态 0-待支付 1-已支付 2-已发货 3-完成',
+    total_amount DECIMAL(10,2) NOT NULL COMMENT '订单总额',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '下单时间',
+    INDEX idx_user_created (user_id, created_at),
+    FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+```
+
+订单明细表 `order_items`
+
+```sql
+CREATE TABLE order_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '明细ID',
+    order_id BIGINT NOT NULL COMMENT '订单ID',
+    product_id BIGINT NOT NULL COMMENT '商品ID',
+    quantity INT NOT NULL COMMENT '购买数量',
+    price DECIMAL(10,2) NOT NULL COMMENT '单价',
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (product_id) REFERENCES products(id),
+    INDEX idx_order_product (order_id, product_id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+```
+
+### 生成大量数据以供测试
+
+生成测试的数据，可以使用sql脚本，python脚本等
+
+批量生成 `users` 数据（10 万条）
+
+```sql
+START TRANSACTION;
+
+INSERT INTO users (username, email, phone, created_at)
+SELECT
+  CONCAT('user_', LPAD(id, 6, '0')),
+  CONCAT('user_', LPAD(id, 6, '0'), '@example.com'),
+  CONCAT('13', LPAD(FLOOR(RAND()*100000000), 8, '0')),
+  NOW() - INTERVAL FLOOR(RAND()*365) DAY
+FROM (
+  SELECT @rownum := @rownum + 1 AS id
+  FROM information_schema.COLUMNS a, information_schema.COLUMNS b, (SELECT @rownum := 0) r
+  LIMIT 100000
+) AS temp;
+
+COMMIT;
+
+```
+
+批量生成 `products` 数据（1000 条）
+
+```sql
+START TRANSACTION;
+
+INSERT INTO products (name, category, price, stock, created_at)
+SELECT
+  CONCAT('商品_', LPAD(id, 4, '0')),
+  ELT(FLOOR(1 + (RAND() * 5)), '数码', '图书', '服饰', '家居', '食品'),
+  ROUND(50 + RAND() * 950, 2),
+  FLOOR(100 + RAND() * 900),
+  NOW() - INTERVAL FLOOR(RAND()*180) DAY
+FROM (
+  SELECT @pid := @pid + 1 AS id
+  FROM information_schema.COLUMNS a, (SELECT @pid := 0) r
+  LIMIT 1000
+) AS temp;
+
+COMMIT;
+
+```
+
+批量生成 `orders` 数据（每用户 1~3 个订单）
+
+```sql
+-- 模拟循环插入
+DELIMITER $$
+
+CREATE PROCEDURE generate_orders()
+BEGIN
+  DECLARE i INT DEFAULT 0;
+  WHILE i < 200000 DO
+    INSERT INTO orders (user_id, order_no, status, total_amount, created_at)
+    SELECT
+      FLOOR(1 + RAND() * 100000),
+      CONCAT('ORD_', LPAD(FLOOR(RAND() * 10000000), 7, '0')),
+      FLOOR(RAND() * 4),
+      ROUND(50 + RAND() * 1000, 2),
+      NOW() - INTERVAL FLOOR(RAND() * 60) DAY;
+    SET i = i + 1;
+  END WHILE;
+END$$
+
+DELIMITER ;
+
+CALL generate_orders();
+
+```
+
+批量生成 `order_items` 数据（每订单 1~3 个商品）
+
+```sql
+START TRANSACTION;
+
+INSERT INTO order_items (order_id, product_id, quantity, price)
+SELECT
+  FLOOR(1 + (RAND() * 200000)), -- 订单 ID 范围
+  FLOOR(1 + (RAND() * 1000)),   -- 商品 ID 范围
+  FLOOR(1 + RAND()*5),
+  ROUND(50 + RAND()*950, 2)
+FROM (
+  SELECT @oiid := @oiid + 1 AS id
+  FROM information_schema.COLUMNS a, information_schema.COLUMNS b, (SELECT @oiid := 0) r
+  LIMIT 500000
+) AS temp;
+
+COMMIT;
+
+```
+
+## 开始测试相关优化项
+
+我们尝试执行一下
+
+```sql
+EXPLAIN SELECT * FROM users WHERE phone = '1302706965';
+```
+
+发现其执行计划如下：
+
+![Image](https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533)
+
+###  `EXPLAIN` 字段详细解释
+
+| 字段名            | 含义                                             | 优化建议                               |
+| ----------------- | ------------------------------------------------ | -------------------------------------- |
+| **id**            | 查询中语句块的标识编号。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/di-yi-zhang-%20mysql-xiang-guan-you-hua-%EF%BC%88-suo-yin-wei-du-%EF%BC%89.html">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
+<title>第一章 mysql相关优化（索引维度）</title>
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">第一章 mysql相关优化（索引维度）</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/7" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><h2>mysql相关优化（索引维度）</h2>
+<h3>建表测试</h3>
+<p>先设计几张表，用户表 <code class="notranslate">users</code>，商品表 <code class="notranslate">products</code>，订单表 <code class="notranslate">orders</code>,订单明细表 <code class="notranslate">order_items</code></p>
+<p>用户表 <code class="notranslate">users</code></p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">users</span> (
+    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>用户ID<span class="pl-pds">'</span></span>,
+    username <span class="pl-k">VARCHAR</span>(<span class="pl-c1">64</span>) <span class="pl-k">NOT NULL</span> UNIQUE COMMENT <span class="pl-s"><span class="pl-pds">'</span>用户名<span class="pl-pds">'</span></span>,
+    email <span class="pl-k">VARCHAR</span>(<span class="pl-c1">128</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>邮箱<span class="pl-pds">'</span></span>,
+    phone <span class="pl-k">VARCHAR</span>(<span class="pl-c1">20</span>) DEFAULT <span class="pl-k">NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>手机号<span class="pl-pds">'</span></span>,
+    created_at DATETIME DEFAULT <span class="pl-c1">CURRENT_TIMESTAMP</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>注册时间<span class="pl-pds">'</span></span>
+) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;
+
+</pre></div>
+<p>商品表 <code class="notranslate">products</code></p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">products</span> (
+    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>商品ID<span class="pl-pds">'</span></span>,
+    name <span class="pl-k">VARCHAR</span>(<span class="pl-c1">128</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>商品名称<span class="pl-pds">'</span></span>,
+    category <span class="pl-k">VARCHAR</span>(<span class="pl-c1">64</span>) DEFAULT <span class="pl-k">NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>分类<span class="pl-pds">'</span></span>,
+    price <span class="pl-k">DECIMAL</span>(<span class="pl-c1">10</span>, <span class="pl-c1">2</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>价格<span class="pl-pds">'</span></span>,
+    stock <span class="pl-k">INT</span> <span class="pl-k">NOT NULL</span> DEFAULT <span class="pl-c1">0</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>库存<span class="pl-pds">'</span></span>,
+    created_at DATETIME DEFAULT <span class="pl-c1">CURRENT_TIMESTAMP</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>上架时间<span class="pl-pds">'</span></span>,
+    INDEX idx_category_price (category, price)
+) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;
+
+</pre></div>
+<p>订单表 <code class="notranslate">orders</code></p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">orders</span> (
+    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单ID<span class="pl-pds">'</span></span>,
+    user_id <span class="pl-k">BIGINT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>下单用户ID<span class="pl-pds">'</span></span>,
+    order_no <span class="pl-k">VARCHAR</span>(<span class="pl-c1">64</span>) <span class="pl-k">NOT NULL</span> UNIQUE COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单号<span class="pl-pds">'</span></span>,
+    status TINYINT <span class="pl-k">NOT NULL</span> DEFAULT <span class="pl-c1">0</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单状态 0-待支付 1-已支付 2-已发货 3-完成<span class="pl-pds">'</span></span>,
+    total_amount <span class="pl-k">DECIMAL</span>(<span class="pl-c1">10</span>,<span class="pl-c1">2</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单总额<span class="pl-pds">'</span></span>,
+    created_at DATETIME DEFAULT <span class="pl-c1">CURRENT_TIMESTAMP</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>下单时间<span class="pl-pds">'</span></span>,
+    INDEX idx_user_created (user_id, created_at),
+    <span class="pl-k">FOREIGN KEY</span> (user_id) <span class="pl-k">REFERENCES</span> users(id)
+) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;
+</pre></div>
+<p>订单明细表 <code class="notranslate">order_items</code></p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">order_items</span> (
+    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>明细ID<span class="pl-pds">'</span></span>,
+    order_id <span class="pl-k">BIGINT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单ID<span class="pl-pds">'</span></span>,
+    product_id <span class="pl-k">BIGINT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>商品ID<span class="pl-pds">'</span></span>,
+    quantity <span class="pl-k">INT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>购买数量<span class="pl-pds">'</span></span>,
+    price <span class="pl-k">DECIMAL</span>(<span class="pl-c1">10</span>,<span class="pl-c1">2</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>单价<span class="pl-pds">'</span></span>,
+    <span class="pl-k">FOREIGN KEY</span> (order_id) <span class="pl-k">REFERENCES</span> orders(id),
+    <span class="pl-k">FOREIGN KEY</span> (product_id) <span class="pl-k">REFERENCES</span> products(id),
+    INDEX idx_order_product (order_id, product_id)
+) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;</pre></div>
+<h3>生成大量数据以供测试</h3>
+<p>生成测试的数据，可以使用sql脚本，python脚本等</p>
+<p>批量生成 <code class="notranslate">users</code> 数据（10 万条）</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">START TRANSACTION</span>;
+
+<span class="pl-k">INSERT INTO</span> users (username, email, phone, created_at)
+<span class="pl-k">SELECT</span>
+  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>user_<span class="pl-pds">'</span></span>, LPAD(id, <span class="pl-c1">6</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
+  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>user_<span class="pl-pds">'</span></span>, LPAD(id, <span class="pl-c1">6</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>), <span class="pl-s"><span class="pl-pds">'</span>@example.com<span class="pl-pds">'</span></span>),
+  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>13<span class="pl-pds">'</span></span>, LPAD(FLOOR(RAND()<span class="pl-k">*</span><span class="pl-c1">100000000</span>), <span class="pl-c1">8</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
+  NOW() <span class="pl-k">-</span> INTERVAL FLOOR(RAND()<span class="pl-k">*</span><span class="pl-c1">365</span>) DAY
+<span class="pl-k">FROM</span> (
+  <span class="pl-k">SELECT</span> @rownum :<span class="pl-k">=</span> @rownum <span class="pl-k">+</span> <span class="pl-c1">1</span> <span class="pl-k">AS</span> id
+  <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> a, <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> b, (<span class="pl-k">SELECT</span> @rownum :<span class="pl-k">=</span> <span class="pl-c1">0</span>) r
+  <span class="pl-k">LIMIT</span> <span class="pl-c1">100000</span>
+) <span class="pl-k">AS</span> temp;
+
+<span class="pl-k">COMMIT</span>;
+</pre></div>
+<p>批量生成 <code class="notranslate">products</code> 数据（1000 条）</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">START TRANSACTION</span>;
+
+<span class="pl-k">INSERT INTO</span> products (name, category, price, stock, created_at)
+<span class="pl-k">SELECT</span>
+  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>商品_<span class="pl-pds">'</span></span>, LPAD(id, <span class="pl-c1">4</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
+  ELT(FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> (RAND() <span class="pl-k">*</span> <span class="pl-c1">5</span>)), <span class="pl-s"><span class="pl-pds">'</span>数码<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>图书<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>服饰<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>家居<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>食品<span class="pl-pds">'</span></span>),
+  ROUND(<span class="pl-c1">50</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">950</span>, <span class="pl-c1">2</span>),
+  FLOOR(<span class="pl-c1">100</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">900</span>),
+  NOW() <span class="pl-k">-</span> INTERVAL FLOOR(RAND()<span class="pl-k">*</span><span class="pl-c1">180</span>) DAY
+<span class="pl-k">FROM</span> (
+  <span class="pl-k">SELECT</span> @pid :<span class="pl-k">=</span> @pid <span class="pl-k">+</span> <span class="pl-c1">1</span> <span class="pl-k">AS</span> id
+  <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> a, (<span class="pl-k">SELECT</span> @pid :<span class="pl-k">=</span> <span class="pl-c1">0</span>) r
+  <span class="pl-k">LIMIT</span> <span class="pl-c1">1000</span>
+) <span class="pl-k">AS</span> temp;
+
+<span class="pl-k">COMMIT</span>;
+</pre></div>
+<p>批量生成 <code class="notranslate">orders</code> 数据（每用户 1~3 个订单）</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-c"><span class="pl-c">--</span> 模拟循环插入</span>
+DELIMITER $$
+
+CREATE PROCEDURE generate_orders()
+<span class="pl-k">BEGIN</span>
+  DECLARE i <span class="pl-k">INT</span> DEFAULT <span class="pl-c1">0</span>;
+  WHILE i <span class="pl-k">&lt;</span> <span class="pl-c1">200000</span> DO
+    <span class="pl-k">INSERT INTO</span> orders (user_id, order_no, status, total_amount, created_at)
+    <span class="pl-k">SELECT</span>
+      FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">100000</span>),
+      CONCAT(<span class="pl-s"><span class="pl-pds">'</span>ORD_<span class="pl-pds">'</span></span>, LPAD(FLOOR(RAND() <span class="pl-k">*</span> <span class="pl-c1">10000000</span>), <span class="pl-c1">7</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
+      FLOOR(RAND() <span class="pl-k">*</span> <span class="pl-c1">4</span>),
+      ROUND(<span class="pl-c1">50</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">1000</span>, <span class="pl-c1">2</span>),
+      NOW() <span class="pl-k">-</span> INTERVAL FLOOR(RAND() <span class="pl-k">*</span> <span class="pl-c1">60</span>) DAY;
+    <span class="pl-k">SET</span> i <span class="pl-k">=</span> i <span class="pl-k">+</span> <span class="pl-c1">1</span>;
+  END WHILE;
+END$$
+
+DELIMITER ;
+
+CALL generate_orders();
+</pre></div>
+<p>批量生成 <code class="notranslate">order_items</code> 数据（每订单 1~3 个商品）</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">START TRANSACTION</span>;
+
+<span class="pl-k">INSERT INTO</span> order_items (order_id, product_id, quantity, price)
+<span class="pl-k">SELECT</span>
+  FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> (RAND() <span class="pl-k">*</span> <span class="pl-c1">200000</span>)), <span class="pl-c"><span class="pl-c">--</span> 订单 ID 范围</span>
+  FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> (RAND() <span class="pl-k">*</span> <span class="pl-c1">1000</span>)),   <span class="pl-c"><span class="pl-c">--</span> 商品 ID 范围</span>
+  FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> RAND()<span class="pl-k">*</span><span class="pl-c1">5</span>),
+  ROUND(<span class="pl-c1">50</span> <span class="pl-k">+</span> RAND()<span class="pl-k">*</span><span class="pl-c1">950</span>, <span class="pl-c1">2</span>)
+<span class="pl-k">FROM</span> (
+  <span class="pl-k">SELECT</span> @oiid :<span class="pl-k">=</span> @oiid <span class="pl-k">+</span> <span class="pl-c1">1</span> <span class="pl-k">AS</span> id
+  <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> a, <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> b, (<span class="pl-k">SELECT</span> @oiid :<span class="pl-k">=</span> <span class="pl-c1">0</span>) r
+  <span class="pl-k">LIMIT</span> <span class="pl-c1">500000</span>
+) <span class="pl-k">AS</span> temp;
+
+<span class="pl-k">COMMIT</span>;
+</pre></div>
+<h2>开始测试相关优化项</h2>
+<p>我们尝试执行一下</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate">EXPLAIN <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>1302706965<span class="pl-pds">'</span></span>;</pre></div>
+<p>发现其执行计划如下：</p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533"><img src="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533" alt="Image" style="max-width: 100%;"></a></p>
+<h3><code class="notranslate">EXPLAIN</code> 字段详细解释</h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>字段名</th>
+<th>含义</th>
+<th>优化建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>id</strong></td>
+<td>查询中语句块的标识编号。值越大，优先执行。</td>
+<td>用于区分子查询和多表操作</td>
+</tr>
+<tr>
+<td><strong>select_type</strong></td>
+<td>查询类型，如 SIMPLE、PRIMARY、SUBQUERY 等</td>
+<td>标识 SQL 中各部分结构</td>
+</tr>
+<tr>
+<td><strong>table</strong></td>
+<td>当前正在访问的表名或别名</td>
+<td>逐行显示各表的处理方式</td>
+</tr>
+<tr>
+<td><strong>partitions</strong></td>
+<td>查询涉及的分区（如果启用了分区表）</td>
+<td>不涉及分区则为空</td>
+</tr>
+<tr>
+<td><strong>type</strong></td>
+<td>表访问类型（连接类型），衡量性能优劣的关键字段</td>
+<td>越靠近 <code class="notranslate">ALL</code> 性能越差</td>
+</tr>
+<tr>
+<td><strong>possible_keys</strong></td>
+<td>可能用于优化该查询的索引列表</td>
+<td>表示 MySQL 考虑的索引</td>
+</tr>
+<tr>
+<td><strong>key</strong></td>
+<td>实际使用到的索引名</td>
+<td>为空则表示没有使用索引</td>
+</tr>
+<tr>
+<td><strong>key_len</strong></td>
+<td>使用的索引长度（字节）</td>
+<td>越短越快，完整匹配通常更优</td>
+</tr>
+<tr>
+<td><strong>ref</strong></td>
+<td>哪些列或常量被用于查找索引值</td>
+<td>通常是 <code class="notranslate">const</code> 或 <code class="notranslate">column_name</code></td>
+</tr>
+<tr>
+<td><strong>rows</strong></td>
+<td>预估扫描的行数（不是结果行）</td>
+<td>值越小，性能越好</td>
+</tr>
+<tr>
+<td><strong>filtered</strong></td>
+<td>表中行经过 WHERE 条件过滤后的估算百分比</td>
+<td>越高说明条件越精准</td>
+</tr>
+<tr>
+<td><strong>Extra</strong></td>
+<td>额外信息，如是否使用文件排序、临时表、索引覆盖等</td>
+<td>查看是否使用了临时表、回表、排序等操作</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h3><code class="notranslate">type</code>（连接类型）由好到差排序</h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>类型</th>
+<th>含义与性能</th>
+<th>示例场景</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>system</strong></td>
+<td>表只有一行（system 表）</td>
+<td>少见</td>
+</tr>
+<tr>
+<td><strong>const</strong></td>
+<td>主键或唯一索引等值匹配</td>
+<td><code class="notranslate">WHERE id = 1</code></td>
+</tr>
+<tr>
+<td><strong>eq_ref</strong></td>
+<td>多表 JOIN 且唯一索引匹配</td>
+<td><code class="notranslate">JOIN ON id = ...</code> 且唯一索引</td>
+</tr>
+<tr>
+<td><strong>ref</strong></td>
+<td>普通索引等值匹配</td>
+<td><code class="notranslate">WHERE user_id = 100</code></td>
+</tr>
+<tr>
+<td><strong>range</strong></td>
+<td>范围查询，如 <code class="notranslate">&gt;</code>, <code class="notranslate">&lt;</code>, <code class="notranslate">BETWEEN</code></td>
+<td><code class="notranslate">WHERE created_at &gt; '2025-01-01'</code></td>
+</tr>
+<tr>
+<td><strong>index</strong></td>
+<td>全索引扫描（比全表好，但仍不理想）</td>
+<td>覆盖索引，但无 WHERE</td>
+</tr>
+<tr>
+<td><strong>ALL</strong></td>
+<td>全表扫描（最差）</td>
+<td>无索引匹配或 LIKE 前缀查询</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h3><code class="notranslate">Extra</code> 常见取值说明与优化建议</h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Extra 信息</th>
+<th>含义</th>
+<th>优化建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>Using index</td>
+<td>使用了覆盖索引（无需回表）</td>
+<td>非常好</td>
+</tr>
+<tr>
+<td>Using where</td>
+<td>使用了 WHERE 过滤条件</td>
+<td>可接受</td>
+</tr>
+<tr>
+<td>Using temporary</td>
+<td>使用了临时表，通常出现在 GROUP BY、ORDER BY</td>
+<td>尽量避免</td>
+</tr>
+<tr>
+<td>Using filesort</td>
+<td>使用了文件排序（非索引排序）</td>
+<td>应优化 ORDER BY 字段加索引</td>
+</tr>
+<tr>
+<td>Using join buffer</td>
+<td>联合查询使用了连接缓存，说明没有索引支持 JOIN</td>
+<td>加索引</td>
+</tr>
+<tr>
+<td>Impossible WHERE</td>
+<td>条件恒为假，SQL 可优化</td>
+<td>检查条件逻辑</td>
+</tr>
+<tr>
+<td>NULL</td>
+<td>未使用任何附加操作</td>
+<td>通常表示性能较好</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h3>EXPLAIN 优化目标：</h3>
+<ul>
+<li><code class="notranslate">type</code> 至少 <code class="notranslate">ref</code> 以上；</li>
+<li><code class="notranslate">rows</code> 越小越好；</li>
+<li><code class="notranslate">Extra</code> 避免 <code class="notranslate">Using filesort</code>, <code class="notranslate">Using temporary</code>；</li>
+<li>覆盖索引时出现 <code class="notranslate">Using index</code> 是好事。</li>
+</ul>
+<h3>分析</h3>
+<p>我们根据以上的相关字符含义得出，我们这条sql效率非常差，无论消耗资源还是其他，cpu占用等。</p>
+<h4>MySQL 常见索引类型对比表</h4>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>索引类型</th>
+<th>定义</th>
+<th>是否唯一</th>
+<th>支持多列</th>
+<th>匹配方式</th>
+<th>适用场景</th>
+<th>限制 / 注意事项</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>普通索引 (INDEX)</strong></td>
+<td>默认索引类型，无唯一性限制</td>
+<td>❌ 否</td>
+<td>✅ 是</td>
+<td>精确、范围、LIKE 前缀</td>
+<td>查询加速，最常用</td>
+<td>可重复值，需关注选择性</td>
+</tr>
+<tr>
+<td><strong>唯一索引 (UNIQUE)</strong></td>
+<td>不允许列值重复</td>
+<td>✅ 是</td>
+<td>✅ 是</td>
+<td>同普通索引</td>
+<td>唯一性约束，如邮箱、手机号</td>
+<td>插入重复会报错；NULL 可重复</td>
+</tr>
+<tr>
+<td><strong>主键索引 (PRIMARY)</strong></td>
+<td>唯一 + 非空的索引列</td>
+<td>✅ 是</td>
+<td>❌ 否</td>
+<td>精确匹配</td>
+<td>主键查找，如 ID 主键</td>
+<td>每表只能有一个，自动唯一</td>
+</tr>
+<tr>
+<td><strong>复合索引 (Multi-column)</strong></td>
+<td>多列组成一个索引</td>
+<td>❌/✅ 取决于定义</td>
+<td>✅ 是</td>
+<td>最左前缀匹配原则</td>
+<td>多条件查询联合加速</td>
+<td>必须按“最左匹配”使用顺序优化</td>
+</tr>
+<tr>
+<td><strong>全文索引 (FULLTEXT)</strong></td>
+<td>基于文本内容倒排索引</td>
+<td>❌ 否</td>
+<td>✅ 是（MySQL 5.7+）</td>
+<td>自然语言 / 布尔模式</td>
+<td>文本搜索，如文章标题、内容</td>
+<td>仅支持 <code class="notranslate">MyISAM</code>/<code class="notranslate">InnoDB</code>（5.6+），适用于英文</td>
+</tr>
+<tr>
+<td><strong>空间索引 (SPATIAL)</strong></td>
+<td>用于地理空间数据</td>
+<td>❌ 否</td>
+<td>✅ 是</td>
+<td>空间距离等计算</td>
+<td>GIS 类型字段查询</td>
+<td>仅适用于 <code class="notranslate">MyISAM</code>（旧版）或 <code class="notranslate">InnoDB</code>（新版），字段类型需为 <code class="notranslate">GEOMETRY</code></td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>我们试着给phone添加普通索引再次尝试</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD INDEX idx_phone (phone);
+EXPLAIN <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>1302706965<span class="pl-pds">'</span></span>;</pre></div>
+<p>添加各种索引的相关语句</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD UNIQUE INDEX idx_email (phone); <span class="pl-c"><span class="pl-c">--</span> 唯一索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD <span class="pl-k">PRIMARY KEY</span> (id);<span class="pl-c"><span class="pl-c">--</span> 主键索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> articles ADD FULLTEXT INDEX idx_content (content); <span class="pl-c"><span class="pl-c">--</span> 全文索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> locations ADD SPATIAL INDEX idx_position (position); <span class="pl-c"><span class="pl-c">--</span> 空间索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD INDEX idx_username_prefix (username(<span class="pl-c1">10</span>)); <span class="pl-c"><span class="pl-c">--</span> 前缀索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> orders ADD INDEX idx_user_product (user_id, product_id); <span class="pl-c"><span class="pl-c">--</span> 复合索引</span></pre></div>
+<p>可以看到执行计划如下：</p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7"><img src="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7" alt="Image" style="max-width: 100%;"></a></p>
+<p>可以看到其效率有一个质的提升。</p>
+<p>我们接下来试着修改相关查询改为模糊查询，以手机号后四位进行模糊查询：</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate">explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">LIKE</span> <span class="pl-s"><span class="pl-pds">'</span>%6965<span class="pl-pds">'</span></span></pre></div>
+<p>执行计划为：</p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541"><img src="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541" alt="Image" style="max-width: 100%;"></a></p>
+<p>可以看到又再次退化到没有索引的状态，我们试着添加全文索引尝试</p>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD FULLTEXT INDEX idx_content_phone(phone);
+<span class="pl-k">SELECT</span> phone, MATCH(phone) AGAINST(<span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span>) <span class="pl-k">as</span> score
+<span class="pl-k">FROM</span> users
+<span class="pl-k">WHERE</span> MATCH(phone) AGAINST(<span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span> <span class="pl-k">IN</span> NATURAL LANGUAGE MODE);</pre></div>
+<p>可能会出现查询不到的情况，下面我们来介绍一下全文索引</p>
+<h4><strong>全文索引详解：</strong></h4>
+<p>全文索引（FULLTEXT INDEX）在 MySQL 中是一种特殊索引，专门用于处理<strong>自然语言文本搜索</strong>（如文章内容、评论等）。但它并不是通用优化工具，对于手机号、编码、ID 等结构化字段并不合适。</p>
+<p>以下是它的 <strong>使用限制、性能消耗</strong> 及场景总结：</p>
+<hr>
+<h5>一、全文索引的使用限制</h5>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>限制项</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>支持字段类型</td>
+<td>仅支持 <code class="notranslate">CHAR</code>、<code class="notranslate">VARCHAR</code>、<code class="notranslate">TEXT</code> 类型字段（不能用于 <code class="notranslate">INT</code>）</td>
+</tr>
+<tr>
+<td>支持存储引擎</td>
+<td>仅支持 <code class="notranslate">InnoDB</code> 和 <code class="notranslate">MyISAM</code>（MyISAM 支持较早，但已过时）</td>
+</tr>
+<tr>
+<td>查询语法限制</td>
+<td>只能配合 <code class="notranslate">MATCH(...) AGAINST(...)</code> 使用，<strong>不能用于 <code class="notranslate">LIKE</code> 查询</strong></td>
+</tr>
+<tr>
+<td>最小索引词长度</td>
+<td>默认 <code class="notranslate">InnoDB</code> 为 3，<code class="notranslate">MyISAM</code> 为 4，小于该长度的词不会被索引（可调）</td>
+</tr>
+<tr>
+<td>停用词限制（Stopwords）</td>
+<td>默认会忽略常见词（如 “the”, “this” 等），可以被自定义或清空</td>
+</tr>
+<tr>
+<td>中文支持差</td>
+<td>默认按空格分词，不支持中文，需要第三方分词插件（如 <a href="https://mroonga.org/" rel="nofollow">Mroonga</a>）</td>
+</tr>
+<tr>
+<td>查询限制</td>
+<td>不能用于 <code class="notranslate">%xxx</code>、正则表达式、范围查询</td>
+</tr>
+<tr>
+<td>事务支持</td>
+<td>仅 <code class="notranslate">InnoDB</code> 支持事务，<code class="notranslate">MyISAM</code> 不支持</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p><strong>示例：无效的 FULLTEXT 使用</strong></p>
+<pre class="notranslate"><code class="notranslate">sql
+
+
+复制编辑
+SELECT * FROM users WHERE phone LIKE '%6965'; -- ❌ FULLTEXT 无法支持此写法
+sql
+
+
+复制编辑
+SELECT * FROM users WHERE phone = '13912345678'; -- ❌ FULLTEXT 也不适合精确匹配
+</code></pre>
+<p>合法用法示例</p>
+<pre class="notranslate"><code class="notranslate">sql复制编辑CREATE TABLE articles (
+  id INT PRIMARY KEY,
+  title VARCHAR(200),
+  body TEXT,
+  FULLTEXT(title, body)
+) ENGINE=InnoDB;
+
+SELECT * FROM articles
+WHERE MATCH(title, body) AGAINST ('mysql fulltext search' IN NATURAL LANGUAGE MODE);
+</code></pre>
+<hr>
+<h5><strong>二、全文索引的性能消耗</strong></h5>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>项目</th>
+<th>描述</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>写入成本</td>
+<td>每次插入/更新带有 FULLTEXT 字段的数据，会触发词拆分与索引构建，CPU 占用高</td>
+</tr>
+<tr>
+<td>空间占用</td>
+<td>FULLTEXT 索引构建倒排索引，占用磁盘空间远高于 BTREE 索引</td>
+</tr>
+<tr>
+<td>查询成本</td>
+<td><code class="notranslate">MATCH ... AGAINST()</code> 查询在大文本上较快，但需要词匹配，有时结果不精确</td>
+</tr>
+<tr>
+<td>不能覆盖索引</td>
+<td>FULLTEXT 索引<strong>无法使用 <code class="notranslate">Using index</code> 优化</strong>，每次查询仍需访问原数据行</td>
+</tr>
+<tr>
+<td>查询不可控</td>
+<td>查询分数是相关度评分，排序不稳定，可能导致分页复杂化</td>
+</tr>
+<tr>
+<td>查询缓存失效</td>
+<td>查询中 <code class="notranslate">MATCH ... AGAINST()</code> 的特性导致不容易被查询缓存命中</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h5>三、性能优化建议（使用 FULLTEXT 时）</h5>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>优化项</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>设置较小的 <code class="notranslate">innodb_ft_min_token_size</code></td>
+<td>支持更短关键词（默认 3）</td>
+</tr>
+<tr>
+<td>清空 <code class="notranslate">innodb_ft_stopword_table</code></td>
+<td>避免常见词被忽略</td>
+</tr>
+<tr>
+<td>使用 <code class="notranslate">BOOLEAN MODE</code></td>
+<td>精确控制搜索（如 <code class="notranslate">+关键词 -排除词</code>）</td>
+</tr>
+<tr>
+<td>控制字段内容长度</td>
+<td>避免过长字段导致索引膨胀</td>
+</tr>
+<tr>
+<td>增加 <code class="notranslate">WITH PARSER ngram</code> 插件</td>
+<td>支持中文分词（如 Mroonga、ngram）</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h5>四、使用场景建议总结</h5>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>场景</th>
+<th>是否推荐使用 FULLTEXT</th>
+<th>替代方案</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>长文本搜索（如文章、描述、评论）</td>
+<td>推荐</td>
+<td>-</td>
+</tr>
+<tr>
+<td>手机号、邮箱、ID 模糊匹配</td>
+<td>不推荐</td>
+<td>后缀字段 + 索引</td>
+</tr>
+<tr>
+<td>中文全文搜索</td>
+<td>默认不支持</td>
+<td>推荐 Mroonga / ElasticSearch</td>
+</tr>
+<tr>
+<td>数据量大、查询实时性强</td>
+<td>适用</td>
+<td>配合 BOOLEAN MODE 和分词调优</td>
+</tr>
+<tr>
+<td>短词查询（&lt;3 个字符）</td>
+<td>默认不支持</td>
+<td>调整参数后才可支持</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h5>五、配置参考</h5>
+<pre class="notranslate"><code class="notranslate">ini复制编辑[mysqld]
+# 最小词长度（InnoDB）
+innodb_ft_min_token_size = 2
+# 关闭停用词列表
+innodb_ft_enable_stopword = OFF
+</code></pre>
+<p>执行后需：</p>
+<pre class="notranslate"><code class="notranslate">sql复制编辑-- 删除旧索引
+ALTER TABLE articles DROP INDEX ft_title;
+
+-- 重建索引
+ALTER TABLE articles ADD FULLTEXT(ft_title);
+</code></pre>
+<p>可见全文索引限制非常多，性能消耗也不小，对于我们上面的查询，我们可以使用一下方法。</p>
+<h4>曲线救国</h4>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-c"><span class="pl-c">--</span> 添加冗余字段</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD COLUMN phone_suffix_right <span class="pl-k">VARCHAR</span>(<span class="pl-c1">10</span>);
+<span class="pl-c"><span class="pl-c">--</span> 设置该字段指，截取phone后四位</span>
+<span class="pl-k">UPDATE</span> users <span class="pl-k">SET</span> phone_suffix_right <span class="pl-k">=</span> RIGHT(phone, <span class="pl-c1">4</span>);
+<span class="pl-c"><span class="pl-c">--</span> 添加索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD INDEX idx_phone_right (phone_suffix_right);
+<span class="pl-c"><span class="pl-c">--</span> 查看执行计划</span>
+explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone_suffix_right <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span></pre></div>
+<p>执行计划如下：</p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599"><img src="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599" alt="Image" style="max-width: 100%;"></a></p>
+<h3>范围查询（部分使用索引）</h3>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> created_at <span class="pl-k">&gt;=</span> <span class="pl-s"><span class="pl-pds">'</span>2025-06-01<span class="pl-pds">'</span></span>;</pre></div>
+<ul>
+<li>命中索引（<code class="notranslate">created_at</code> 上有索引时）；</li>
+<li>查询大范围时仍可能带来大量回表或临时表。</li>
+</ul>
+<p><strong>优化建议</strong>：</p>
+<ul>
+<li>限制字段数避免回表；</li>
+<li>创建联合索引：<code class="notranslate">(created_at, id)</code>；</li>
+<li>覆盖索引最理想：只查索引中的字段。</li>
+</ul>
+<h3>多条件组合（联合索引使用顺序）</h3>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> created_at <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>2025-06-01<span class="pl-pds">'</span></span> <span class="pl-k">AND</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>13900001111<span class="pl-pds">'</span></span>;</pre></div>
+<ul>
+<li>若索引为 <code class="notranslate">(created_at, phone)</code> 则命中；</li>
+<li>若顺序反了 <code class="notranslate">(phone, created_at)</code>，可能不命中。</li>
+</ul>
+<p><strong>优化建议</strong>：</p>
+<ul>
+<li>索引顺序遵循最左前缀匹配原则；</li>
+<li>使用 <code class="notranslate">EXPLAIN</code> 检查 <code class="notranslate">key</code> 和 <code class="notranslate">rows</code>。</li>
+</ul>
+<h3>JOIN 查询（关联效率分析）</h3>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-c1">o</span>.<span class="pl-c1">id</span>, <span class="pl-c1">u</span>.<span class="pl-c1">username</span>, <span class="pl-c1">o</span>.<span class="pl-c1">total_amount</span>
+<span class="pl-k">FROM</span> orders o
+<span class="pl-k">JOIN</span> users u <span class="pl-k">ON</span> <span class="pl-c1">o</span>.<span class="pl-c1">user_id</span> <span class="pl-k">=</span> <span class="pl-c1">u</span>.<span class="pl-c1">id</span>
+<span class="pl-k">WHERE</span> <span class="pl-c1">o</span>.<span class="pl-c1">created_at</span> <span class="pl-k">&gt;=</span> <span class="pl-s"><span class="pl-pds">'</span>2025-06-01<span class="pl-pds">'</span></span>;</pre></div>
+<ul>
+<li>外键字段上需有索引（<code class="notranslate">orders.user_id</code>）。</li>
+<li><code class="notranslate">EXPLAIN</code> 检查 <code class="notranslate">type = ref</code> 或 <code class="notranslate">eq_ref</code>，<code class="notranslate">rows</code> 尽量小。</li>
+</ul>
+<p><strong>优化建议</strong>：</p>
+<ul>
+<li>两边关联字段均加索引；</li>
+<li>确保 <code class="notranslate">ON</code> 和 <code class="notranslate">WHERE</code> 条件可过滤。</li>
+</ul>
+<h3>聚合查询（索引覆盖优化）</h3>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-c1">COUNT</span>(<span class="pl-k">*</span>) <span class="pl-k">FROM</span> orders <span class="pl-k">WHERE</span> status <span class="pl-k">=</span> <span class="pl-c1">1</span>;</pre></div>
+<ul>
+<li>若 <code class="notranslate">status</code> 有索引，能大幅减少扫描。</li>
+<li>更佳：<code class="notranslate">COUNT(status)</code> + 覆盖索引。</li>
+</ul>
+<h3>分页查询（慢查询常见源头）</h3>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> orders <span class="pl-k">ORDER BY</span> created_at <span class="pl-k">DESC</span> <span class="pl-k">LIMIT</span> <span class="pl-c1">10000</span>, <span class="pl-c1">10</span>;</pre></div>
+<ul>
+<li>大偏移量分页会导致“跳过”前 <code class="notranslate">10000</code> 行记录；</li>
+<li><code class="notranslate">EXPLAIN</code> 显示全表扫描 + filesort。</li>
+</ul>
+<p><strong>优化建议</strong>：</p>
+<ul>
+<li>使用“延迟分页”：</li>
+</ul>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> orders
+<span class="pl-k">WHERE</span> id <span class="pl-k">&gt;</span> (<span class="pl-k">SELECT</span> id <span class="pl-k">FROM</span> orders <span class="pl-k">ORDER BY</span> created_at <span class="pl-k">DESC</span> <span class="pl-k">LIMIT</span> <span class="pl-c1">10000</span>, <span class="pl-c1">1</span>)
+<span class="pl-k">ORDER BY</span> created_at <span class="pl-k">DESC</span>
+<span class="pl-k">LIMIT</span> <span class="pl-c1">10</span>;</pre></div>
+<p>分页的相关优化可参考：<a href="https://mp.weixin.qq.com/s/iyXdKa4mOkqJWN0spN0DLA" rel="nofollow">MySQL分页优化指南：告别LIMIT OFFSET的性能噩梦</a></p>
+<p><a href="https://mp.weixin.qq.com/s/LXvQMQFf_SyLWh1zI6onkA" rel="nofollow">京东面试：mysql深度分页 严重影响性能？根本原因是什么？如何优化？</a></p>
+<p><a href="https://mp.weixin.qq.com/s/3PV5yF0ObuSfnw6pHXtKzA" rel="nofollow">史上最全MySQL各种锁详解</a></p>
+<h1>回表与索引覆盖</h1>
+<h2>一、什么是回表？</h2>
+<h3>回表（Row Lookup）指的是：</h3>
+<p>在使用**二级索引（非聚簇索引）*<em>查询时，若查询的字段*<em>不完全在索引中</em></em>，MySQL 需要：</p>
+<ol>
+<li>先根据索引定位到对应的主键值（<code class="notranslate">id</code>）；</li>
+<li>再用主键去主表（聚簇索引）中**“回表”**读取其它字段。</li>
+</ol>
+<p>这一步叫<strong>回表操作</strong>。</p>
+<hr>
+<h2>二、什么是覆盖索引？</h2>
+<p>查询所需的所有字段都<strong>包含在一个索引中</strong>，则称为“覆盖索引”，此时<strong>不需要回表</strong>，可以直接从索引中返回结果。</p>
+<h2>三、如何查看是否发生了回表？</h2>
+<h3>使用 <code class="notranslate">EXPLAIN</code> 看执行计划的 <code class="notranslate">Extra</code> 字段：</h3>
+<div class="highlight highlight-source-sql"><pre class="notranslate">EXPLAIN <span class="pl-k">SELECT</span> name <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>13912345678<span class="pl-pds">'</span></span>;</pre></div>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>id</th>
+<th>select_type</th>
+<th>table</th>
+<th>type</th>
+<th>key</th>
+<th>key_len</th>
+<th>rows</th>
+<th>Extra</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>1</td>
+<td>SIMPLE</td>
+<td>users</td>
+<td>ref</td>
+<td>idx_phone</td>
+<td>23</td>
+<td>1</td>
+<td><strong>Using index</strong> ✅</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h4><code class="notranslate">Extra</code> 字段说明：</h4>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>Extra 描述</th>
+<th>是否回表</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">Using index</code></td>
+<td>❌ 不回表</td>
+<td>使用了<strong>覆盖索引</strong>，数据来自索引树</td>
+</tr>
+<tr>
+<td><code class="notranslate">Using where</code></td>
+<td>✅ 通常会回表</td>
+<td>用于过滤，但数据可能来自主表</td>
+</tr>
+<tr>
+<td><code class="notranslate">Using index condition</code></td>
+<td>✅ 是</td>
+<td>使用 <strong>Index Condition Pushdown (ICP)</strong>，部分条件在索引中处理，仍需回表</td>
+</tr>
+<tr>
+<td>无 <code class="notranslate">Using index</code> 且无 <code class="notranslate">Using where</code></td>
+<td>✅</td>
+<td>更可能是全表或主键扫描</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>终极手段</p>
+<p>MySQL 5.7+ 支持优化器 trace：</p>
+<pre class="notranslate"><code class="notranslate">sql复制编辑SET optimizer_trace="enabled=on",end_markers_in_json=on;
+SELECT * FROM users WHERE phone = '1353526525';
+SELECT * FROM information_schema.optimizer_trace\G
+</code></pre>
+<p>可以在 <code class="notranslate">index_condition_pushdown</code> 和 <code class="notranslate">rowid lookup</code> 等字段中看到是否有回表行为。</p>
+<h2>四、如何避免回表？</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>方法</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>覆盖索引</td>
+<td>查询字段尽量包含在已存在的索引列中</td>
+</tr>
+<tr>
+<td>使用 <code class="notranslate">SELECT 索引字段</code> 而非 <code class="notranslate">SELECT *</code></td>
+<td>减少不必要字段，优化覆盖率</td>
+</tr>
+<tr>
+<td>组合索引</td>
+<td>将多个常用字段放在一个联合索引中</td>
+</tr>
+<tr>
+<td>业务查询尽量限制在索引字段范围内</td>
+<td>提高命中率和可覆盖性</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2>五、补充：查看慢查询是否因回表导致</h2>
+<p>虽然慢查询日志不直接显示“是否回表”，但你可以通过以下方法判断：</p>
+<ol>
+<li>使用 <code class="notranslate">EXPLAIN</code> 检查慢 SQL 是否命中 <code class="notranslate">Using index</code>；</li>
+<li>对慢查询运行 <code class="notranslate">SHOW PROFILE</code> 来观察 IO 消耗（需要先开启）；</li>
+<li>使用 <code class="notranslate">pt-query-digest</code> 识别高 IO 查询，看是否涉及非覆盖索引。</li>
+</ol>
+<h2>六、实用建议：是否优化为覆盖索引？</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>场景</th>
+<th>是否建议优化为覆盖索引</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>高频查询、字段较少</td>
+<td>✅ 是，减少回表 IO</td>
+</tr>
+<tr>
+<td>查询字段仅主键</td>
+<td>❌ 不必优化</td>
+</tr>
+<tr>
+<td>查询字段不可能进索引（如 TEXT）</td>
+<td>❌ 不适合做覆盖索引</td>
+</tr>
+<tr>
+<td>大数据量分页或排序场景</td>
+<td>✅ 尽可能覆盖，避免回表 + filesort</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2>七、覆盖索引的“滥用”风险与误区</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th><strong>问题</strong></th>
+<th><strong>说明</strong></th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>索引膨胀、占用空间</td>
+<td>包含多个字段的复合索引体积大，可能占用大量磁盘和内存。</td>
+</tr>
+<tr>
+<td>写入性能下降</td>
+<td>每次 <code class="notranslate">INSERT/UPDATE/DELETE</code> 操作都需维护更多索引，增加写负担。</td>
+</tr>
+<tr>
+<td>过度依赖，增加维护复杂度</td>
+<td>查询变动会频繁要求修改索引结构，维护成本增加。</td>
+</tr>
+<tr>
+<td>使用场景不匹配反而无效</td>
+<td>查询字段未按最左前缀使用时，覆盖索引无效或部分失效。</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2>八、如何“正确使用”覆盖索引？</h2>
+<p>使用建议：</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>场景</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>高频 <code class="notranslate">SELECT</code> 且列固定</td>
+<td>使用覆盖索引效果最佳。</td>
+</tr>
+<tr>
+<td>表数据量大、单表读多写少</td>
+<td>用覆盖索引显著提升读性能。</td>
+</tr>
+<tr>
+<td>查询字段有限</td>
+<td>使用包含少字段的复合索引可减少空间开销。</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>设计技巧：</p>
+<ol>
+<li>
+<p><strong>最左前缀原则：</strong><br>
+覆盖索引也遵循最左匹配规则，字段顺序必须优化。</p>
+<pre class="notranslate"><code class="notranslate">sql复制编辑CREATE INDEX idx_email_username ON users(email, username);
+-- 支持：email = ? AND username = ?
+-- 不支持：username = ? （email 未使用，无法命中）
+</code></pre>
+</li>
+<li>
+<p><strong>将常用的查询字段加入联合索引末尾</strong>：</p>
+<pre class="notranslate"><code class="notranslate">sql
+
+
+复制编辑
+CREATE INDEX idx_email_username_id ON users(email, username, id);
+</code></pre>
+</li>
+<li>
+<p><strong>避免过多字段索引：</strong><br>
+如你有查询 <code class="notranslate">SELECT *</code>，不要尝试将所有字段都放进索引，会严重浪费资源。</p>
+</li>
+<li>
+<p><strong>利用 <code class="notranslate">EXPLAIN</code> 验证覆盖索引是否生效：</strong><br>
+查看 <code class="notranslate">Extra</code> 字段是否含有 <code class="notranslate">Using index</code>。</p>
+</li>
+</ol></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">宏渊的技术博客</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行"+diffDay+"天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+<script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
+
+</html>
