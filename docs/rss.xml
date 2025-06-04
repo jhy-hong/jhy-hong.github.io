@@ -1,5 +1,116 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0"><channel><title>宏渊的技术博客</title><link>https://jhy-hong.github.io</link><description>我是宏渊，一个热爱技术，热爱分享的，热爱生活的牛马。。。</description><copyright>宏渊的技术博客</copyright><docs>http://www.rssboard.org/rss-specification</docs><generator>python-feedgen</generator><image><url>https://avatars.githubusercontent.com/u/59826062?v=4</url><title>avatar</title><link>https://jhy-hong.github.io</link></image><lastBuildDate>Wed, 04 Jun 2025 08:05:02 +0000</lastBuildDate><managingEditor>宏渊的技术博客</managingEditor><ttl>60</ttl><webMaster>宏渊的技术博客</webMaster><item><title>第二章 mysql的全维度优化总结</title><link>https://jhy-hong.github.io/post/di-er-zhang-%20mysql-de-quan-wei-du-you-hua-zong-jie.html</link><description>## 一、数据库设计阶段优化
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0"><channel><title>宏渊的技术博客</title><link>https://jhy-hong.github.io</link><description>我是宏渊，一个热爱技术，热爱分享的，热爱生活的牛马。。。</description><copyright>宏渊的技术博客</copyright><docs>http://www.rssboard.org/rss-specification</docs><generator>python-feedgen</generator><image><url>https://avatars.githubusercontent.com/u/59826062?v=4</url><title>avatar</title><link>https://jhy-hong.github.io</link></image><lastBuildDate>Wed, 04 Jun 2025 16:19:03 +0000</lastBuildDate><managingEditor>宏渊的技术博客</managingEditor><ttl>60</ttl><webMaster>宏渊的技术博客</webMaster><item><title>go语言中的测试</title><link>https://jhy-hong.github.io/post/go-yu-yan-zhong-de-ce-shi.html</link><description># golang中的测试
+
+golang中使用go test进行相应测试，目前有三种：
+
+- 单元测试：对软件中**最小可测试单元进行检查和验证**，比如对一个函数的测试
+
+- 性能测试：也称为基准测试，可测试&lt;mark&gt;一段程序的性能，可以得到时间消耗，内存使用情况&lt;/mark&gt;的报告
+
+- 示例测试：用于展示某个包或某个方法的用法
+
+### 单元测试
+
+目录结构
+
+&lt;img width='205' alt='Image' src='https://github.com/user-attachments/assets/eb5fa6e6-eb15-4f64-83a7-1268bb5b558a' /&gt;
+
+源代码文件unit.go：
+
+```go
+package unitTesting
+
+func Add(a, b int) int {
+    return a + b
+}
+```
+
+测试文件 unit_testing.go
+
+```go
+package unitTesting_test
+
+import (
+    'testing'
+    'unitTesting'
+)
+
+func TestAdd(t *testing.T) {
+    var a, b = 1, 2
+    expected := 3
+    actual := unitTesting.Add(a, b)
+    if actual != expected {
+        t.Errorf('error')
+    }
+}
+```
+
+测试文件属于unitTesting_test包，测试文件也可以和源文件在同一个包中，但常见的做法是创建一个包专门用于测试，这样&lt;mark&gt;可以使测试文件和源文件隔离&lt;/mark&gt;，规则是在原包名加上 &lt;mark&gt;_test&lt;/mark&gt;
+
+**小结：**
+
+- 测试文件名必须以&lt;mark&gt;_test.go&lt;/mark&gt;结尾
+
+- 测试函数名必须以&lt;mark&gt;TestXxx&lt;/mark&gt;开始
+
+- 在命令行下使用&lt;mark&gt;go test&lt;/mark&gt;即可开启测试
+
+## 基准测试
+
+*目录结构*
+
+![Image](https://github.com/user-attachments/assets/168950e5-21e7-44d5-a653-7e89249df538)
+
+源代码文件 benchmakr.go
+
+```go
+package benchmarkTest
+
+// MakeSliceWithoutAlloc 不预分配
+func MakeSliceWithoutAlloc() []int {
+    var newSlice []int
+    for i := 0; i &lt; 100000; i++ {
+        newSlice = append(newSlice, i)
+    }
+    return newSlice
+}
+
+// MakeSliceWithAlloc 预分配
+func MakeSliceWithAlloc() []int {
+    var newSlice []int
+    newSlice = make([]int, 0, 100000)
+    for i := 0; i &lt; 100000; i++ {
+        newSlice = append(newSlice, i)
+    }
+    return newSlice
+}
+```
+
+测试文件benchmark_test.go
+
+```go
+package benchmarkTest_test
+
+import (
+    'benchmarkTest'
+    'testing'
+)
+
+func BenchmarkMakeSliceWithoutAlloc(b *testing.B) {
+    for i := 0; i &lt; b.N; i++ {
+        benchmarkTest.MakeSliceWithoutAlloc()
+    }
+}
+func BenchmarkMakeSliceWithAlloc(b *testing.B) {
+    for i := 0; i &lt; b.N; i++ {
+        benchmarkTest.MakeSliceWithAlloc()
+    }
+}
+```
+
+性能测试函数的命名规则为BenchmarkXxx，其中Xxx为自定义的标识，需要以大写字母开头，通常为待测函数
+
+testing.B提供了一系列用于辅助性能测试的方法或成员，如上面的b.N表示循环执行的次数，而N值不用程序员关心，N值是动态调整的，直到可靠的算出程序执行时间后才会停止。</description><guid isPermaLink="true">https://jhy-hong.github.io/post/go-yu-yan-zhong-de-ce-shi.html</guid><pubDate>Wed, 04 Jun 2025 16:18:36 +0000</pubDate></item><item><title>第二章 mysql的全维度优化总结</title><link>https://jhy-hong.github.io/post/di-er-zhang-%20mysql-de-quan-wei-du-you-hua-zong-jie.html</link><description>## 一、数据库设计阶段优化
 
 ### 1. 规范化设计（前期）
 
