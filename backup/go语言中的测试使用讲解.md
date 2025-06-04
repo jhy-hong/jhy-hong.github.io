@@ -1,4 +1,4 @@
-# golang中的测试
+# golang中的测试分类
 
 golang中使用go test进行相应测试，目前有三种：
 
