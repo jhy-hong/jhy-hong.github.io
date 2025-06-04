@@ -1,5 +1,5 @@
 <?xml version='1.0' encoding='UTF-8'?>
-<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0"><channel><title>宏渊的技术博客</title><link>https://jhy-hong.github.io</link><description>我是宏渊，一个热爱技术，热爱分享的，热爱生活的牛马。。。</description><copyright>宏渊的技术博客</copyright><docs>http://www.rssboard.org/rss-specification</docs><generator>python-feedgen</generator><image><url>https://avatars.githubusercontent.com/u/59826062?v=4</url><title>avatar</title><link>https://jhy-hong.github.io</link></image><lastBuildDate>Wed, 04 Jun 2025 16:19:03 +0000</lastBuildDate><managingEditor>宏渊的技术博客</managingEditor><ttl>60</ttl><webMaster>宏渊的技术博客</webMaster><item><title>go语言中的测试</title><link>https://jhy-hong.github.io/post/go-yu-yan-zhong-de-ce-shi.html</link><description># golang中的测试
+<rss xmlns:atom="http://www.w3.org/2005/Atom" xmlns:content="http://purl.org/rss/1.0/modules/content/" version="2.0"><channel><title>宏渊的技术博客</title><link>https://jhy-hong.github.io</link><description>我是宏渊，一个热爱技术，热爱分享的，热爱生活的牛马。。。</description><copyright>宏渊的技术博客</copyright><docs>http://www.rssboard.org/rss-specification</docs><generator>python-feedgen</generator><image><url>https://avatars.githubusercontent.com/u/59826062?v=4</url><title>avatar</title><link>https://jhy-hong.github.io</link></image><lastBuildDate>Wed, 04 Jun 2025 16:26:28 +0000</lastBuildDate><managingEditor>宏渊的技术博客</managingEditor><ttl>60</ttl><webMaster>宏渊的技术博客</webMaster><item><title>go语言中的测试使用讲解</title><link>https://jhy-hong.github.io/post/go-yu-yan-zhong-de-ce-shi-shi-yong-jiang-jie.html</link><description># golang中的测试
 
 golang中使用go test进行相应测试，目前有三种：
 
@@ -110,7 +110,7 @@ func BenchmarkMakeSliceWithAlloc(b *testing.B) {
 
 性能测试函数的命名规则为BenchmarkXxx，其中Xxx为自定义的标识，需要以大写字母开头，通常为待测函数
 
-testing.B提供了一系列用于辅助性能测试的方法或成员，如上面的b.N表示循环执行的次数，而N值不用程序员关心，N值是动态调整的，直到可靠的算出程序执行时间后才会停止。</description><guid isPermaLink="true">https://jhy-hong.github.io/post/go-yu-yan-zhong-de-ce-shi.html</guid><pubDate>Wed, 04 Jun 2025 16:18:36 +0000</pubDate></item><item><title>第二章 mysql的全维度优化总结</title><link>https://jhy-hong.github.io/post/di-er-zhang-%20mysql-de-quan-wei-du-you-hua-zong-jie.html</link><description>## 一、数据库设计阶段优化
+testing.B提供了一系列用于辅助性能测试的方法或成员，如上面的b.N表示循环执行的次数，而N值不用程序员关心，N值是动态调整的，直到可靠的算出程序执行时间后才会停止。</description><guid isPermaLink="true">https://jhy-hong.github.io/post/go-yu-yan-zhong-de-ce-shi-shi-yong-jiang-jie.html</guid><pubDate>Wed, 04 Jun 2025 16:18:36 +0000</pubDate></item><item><title>第二章 mysql的全维度优化总结</title><link>https://jhy-hong.github.io/post/di-er-zhang-%20mysql-de-quan-wei-du-you-hua-zong-jie.html</link><description>## 一、数据库设计阶段优化
 
 ### 1. 规范化设计（前期）
 
