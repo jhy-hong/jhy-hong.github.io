@@ -618,10 +618,6 @@ SELECT * FROM information_schema.optimizer_trace\G
 2. **将常用的查询字段加入联合索引末尾**：
 
    ```
-   sql
-   
-   
-   复制编辑
    CREATE INDEX idx_email_username_id ON users(email, username, id);
    ```
 

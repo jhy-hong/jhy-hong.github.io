@@ -1306,11 +1306,7 @@ SELECT * FROM information_schema.optimizer_trace\G
 </li>
 <li>
 <p><strong>将常用的查询字段加入联合索引末尾</strong>：</p>
-<pre class="notranslate"><code class="notranslate">sql
-
-
-复制编辑
-CREATE INDEX idx_email_username_id ON users(email, username, id);
+<pre class="notranslate"><code class="notranslate">CREATE INDEX idx_email_username_id ON users(email, username, id);
 </code></pre>
 </li>
 <li>
