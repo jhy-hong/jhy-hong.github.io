@@ -1,0 +1,479 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekVercount.js'></script>
+    <link rel="icon" href="https://avatars.githubusercontent.com/u/59826062?v=4"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="Prometheus 是云原生生态中的核心监控工具，其设计理念与实现方式与传统监控系统有很大不同。">
+<meta property="og:title" content="prometheus的相关概念及其优化">
+<meta property="og:description" content="Prometheus 是云原生生态中的核心监控工具，其设计理念与实现方式与传统监控系统有很大不同。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/prometheus-de-xiang-guan-gai-nian-ji-qi-you-hua.html">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
+<title>prometheus的相关概念及其优化</title>
+
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">prometheus的相关概念及其优化</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/11" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><p>Prometheus 是云原生生态中的核心监控工具，其设计理念与实现方式与传统监控系统有很大不同。下面从 <strong>概念、原理、优化策略、查询优化</strong> 等维度进行全面介绍。</p>
+<hr>
+<h2>一、Prometheus 相关概念</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>概念</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>时间序列（Time Series）</strong></td>
+<td>每一条以时间为索引的数据记录，如某台机器的 CPU 使用率。</td>
+</tr>
+<tr>
+<td><strong>指标（Metric）</strong></td>
+<td>Prometheus 收集的基础单位，如 <code class="notranslate">http_requests_total</code>、<code class="notranslate">node_cpu_seconds_total</code>。</td>
+</tr>
+<tr>
+<td><strong>标签（Label）</strong></td>
+<td>用于区分同一指标的不同维度，如 <code class="notranslate">method="GET"</code>、<code class="notranslate">status="200"</code>。</td>
+</tr>
+<tr>
+<td><strong>样本（Sample）</strong></td>
+<td>某个时间点上的具体值，如时间戳 + 值。</td>
+</tr>
+<tr>
+<td><strong>Job / Instance</strong></td>
+<td><code class="notranslate">Job</code> 表示一个逻辑服务，<code class="notranslate">Instance</code> 表示某个具体采集地址（主机 + 端口）。</td>
+</tr>
+<tr>
+<td><strong>Exporter</strong></td>
+<td>用于暴露 Prometheus 可采集指标的组件，如 Node Exporter、MySQL Exporter。</td>
+</tr>
+<tr>
+<td><strong>Scrape</strong></td>
+<td>Prometheus 向目标拉取指标数据的过程。</td>
+</tr>
+<tr>
+<td><strong>Pushgateway</strong></td>
+<td>用于暂存短生命周期任务的指标，推送给 Prometheus。</td>
+</tr>
+<tr>
+<td><strong>PromQL</strong></td>
+<td>Prometheus 查询语言，功能强大、用于分析和聚合指标。</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h2>二、核心原理</h2>
+<h3>1. <strong>拉模式采集（Pull-based）</strong></h3>
+<p>Prometheus 默认通过 HTTP GET 请求周期性地“拉取”被监控目标的数据（通过 <code class="notranslate">/metrics</code> 接口），不依赖被动接收。</p>
+<h3>2. <strong>数据模型</strong></h3>
+<p>Prometheus 的数据模型基于多维度时间序列，每个时间序列由：</p>
+<pre class="notranslate"><code class="notranslate">arduino
+
+
+复制编辑
+&lt;metric_name&gt;{label1="value1", label2="value2", ...}
+</code></pre>
+<p>组成，支持丰富的聚合和过滤。</p>
+<h3>3. <strong>本地时序数据库（TSDB）</strong></h3>
+<ul>
+<li>数据以 block 存储，分段压缩为 chunk</li>
+<li>存储结构：时间戳 + 值（每个时间序列）</li>
+<li>持久化存储目录：<code class="notranslate">/var/lib/prometheus</code></li>
+</ul>
+<h3>4. <strong>服务发现（Service Discovery）</strong></h3>
+<ul>
+<li>支持静态配置、Kubernetes、Consul、EC2 等动态发现目标</li>
+<li>自动注册 scrape 目标，提高可维护性</li>
+</ul>
+<hr>
+<h2>三、优化策略</h2>
+<h3>1. <strong>采集优化</strong></h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>策略</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>降低采集频率</td>
+<td>例如：默认 15s，非关键指标可设置为 60s，减少数据量</td>
+</tr>
+<tr>
+<td>精简指标数量</td>
+<td>配置 <code class="notranslate">metric_relabel_configs</code> 过滤不必要的指标</td>
+</tr>
+<tr>
+<td>限制标签基数</td>
+<td>避免 high-cardinality label，如 <code class="notranslate">user_id</code>、<code class="notranslate">uuid</code></td>
+</tr>
+<tr>
+<td>细分 job</td>
+<td>不同 job 设置不同 scrape 配置，提高调度效率</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h3>2. <strong>存储优化</strong></h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>策略</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>TSDB retention 时间控制</td>
+<td>如：保留 15d，而不是默认的永久</td>
+</tr>
+<tr>
+<td>启用远程存储（Remote Write）</td>
+<td>接入 Thanos、VictoriaMetrics、Cortex 等，实现高可用/长期存储</td>
+</tr>
+<tr>
+<td>使用压缩格式</td>
+<td>Prometheus 使用 Gorilla 压缩算法，默认已启用，不建议修改</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h3>3. <strong>部署优化</strong></h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>项目</th>
+<th>建议</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>分片采集</td>
+<td>一个 Prometheus 实例负责一部分 job，避免单点压力过大</td>
+</tr>
+<tr>
+<td>联邦集群（Federation）</td>
+<td>通过上层 Prometheus 汇聚下游数据</td>
+</tr>
+<tr>
+<td>异步采集与导入</td>
+<td>通过 Pushgateway、remote write 缓解采集压力</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h2>四、PromQL 查询优化</h2>
+<h3>1. <strong>查询基本形式</strong></h3>
+<pre class="notranslate"><code class="notranslate">promql复制编辑http_requests_total{job="web", method="GET"}  # 精确匹配标签
+rate(http_requests_total[5m])                 # 计算速率
+sum by (method) (rate(http_requests_total[1m])) # 按标签聚合
+</code></pre>
+<h3>2. <strong>查询优化策略</strong></h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>优化点</th>
+<th>示例 / 说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>避免不必要的正则匹配</td>
+<td><code class="notranslate">{job=~"web.*"}</code> 尽量用 <code class="notranslate">{job="web"}</code> 替代</td>
+</tr>
+<tr>
+<td>控制时间窗口长度</td>
+<td><code class="notranslate">rate(metric[1h])</code> 比 <code class="notranslate">rate(metric[5m])</code> 资源消耗大</td>
+</tr>
+<tr>
+<td>聚合后再做计算</td>
+<td>优化表达式顺序，先 <code class="notranslate">sum</code> 后 <code class="notranslate">rate</code> 通常性能更好</td>
+</tr>
+<tr>
+<td>限制 <code class="notranslate">label_replace()</code> 使用</td>
+<td>该函数开销大，避免频繁使用</td>
+</tr>
+<tr>
+<td>使用 <code class="notranslate">subquery</code> 控制样本量</td>
+<td>如：<code class="notranslate">avg_over_time(rate(metric[1m])[10m:1m])</code></td>
+</tr>
+<tr>
+<td>使用 <code class="notranslate">offset</code> 避免读取最新数据</td>
+<td>Prometheus TSDB 对“当前时间”的样本查询开销大，可使用 <code class="notranslate">offset 5s</code> 延迟处理</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h2>六、prmetheus告警的架构</h2>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/c3ac59f6-47da-47ec-af1d-eca96b806ccf"><img src="https://github.com/user-attachments/assets/c3ac59f6-47da-47ec-af1d-eca96b806ccf" alt="prometheus告警架构图" style="max-width: 100%;"></a></p>
+<h3>相关组件详解：</h3>
+<ul>
+<li>Prometheus Server：Prometheus 生态最重要的组件，主要用于抓取和存储时间序</li>
+</ul>
+<p>列数据，同时提供数据的查询和告警策略的配置管理</p>
+<ul>
+<li>Alertmanager：Prometheus 生态用于告警的组件，Prometheus Server 会将告警发</li>
+</ul>
+<p>送给 Alertmanager，Alertmanager 根据路由配置，将告警信息发送给指定的人或</p>
+<p>组。Alertmanager 支持邮件、Webhook、微信、钉钉、短信等媒介进行告警通知；</p>
+<ul>
+<li>
+<p>Grafana：用于展示数据，便于数据的查询和观测；</p>
+</li>
+<li>
+<p>Push Gateway：Prometheus 本身是通过 Pull 的方式拉取数据，但是有些监控数据</p>
+</li>
+</ul>
+<p>可能是短期的，如果没有采集数据可能会出现丢失。Push Gateway 可以用来解决</p>
+<p>此类问题，它可以用来接收数据，也就是客户端可以通过 Push 的方式将数据推送</p>
+<p>到 Push Gateway，之后 Prometheus 可以通过 Pull 拉取该数据；</p>
+<ul>
+<li>Exporter：主要用来采集监控数据，比如主机的监控数据可以通过 node_exporter</li>
+</ul>
+<p>采集，MySQL 的监控数据可以通过 mysql_exporter 采集，之后 Exporter 暴露一个</p>
+<p>接口，比如/metrics，Prometheus 可以通过该接口采集到数据；</p>
+<ul>
+<li>PromQL：PromQL 其实不算 Prometheus 的组件，它是用来查询数据的一种语法，</li>
+</ul>
+<p>比如查询数据库的数据，可以通过 SQL 语句，查询 Loki 的数据，可以通过 LogQL，</p>
+<p>查询 Prometheus 数据的叫做 PromQL；</p>
+<ul>
+<li>Service Discovery：用来发现监控目标的自动发现，常用的有基于 Kubernetes、</li>
+</ul>
+<p>Consul、Eureka、文件的自动发现等。</p></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">宏渊的技术博客</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行"+diffDay+"天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+<script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
+
+</html>
