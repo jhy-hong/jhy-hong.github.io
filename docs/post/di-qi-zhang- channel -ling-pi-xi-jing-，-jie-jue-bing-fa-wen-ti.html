@@ -1,0 +1,1237 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekVercount.js'></script>
+    <link rel="icon" href="https://avatars.githubusercontent.com/u/59826062?v=4"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="## Channel 的应用场景
+
+go 语言中流传很广的谚语：
+
+> Don’t communicate by sharing memory, share memory by communicating.
+> 
+> Go Proverbs by Rob Pike
+
+“执行业务处理的 goroutine 不要通过共享内存的方式通信，而是要通过 Channel 通信的方式分享数据。">
+<meta property="og:title" content="第七章 channel 另辟蹊径，解决并发问题">
+<meta property="og:description" content="## Channel 的应用场景
+
+go 语言中流传很广的谚语：
+
+> Don’t communicate by sharing memory, share memory by communicating.
+> 
+> Go Proverbs by Rob Pike
+
+“执行业务处理的 goroutine 不要通过共享内存的方式通信，而是要通过 Channel 通信的方式分享数据。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/di-qi-zhang-%20channel%20-ling-pi-xi-jing-%EF%BC%8C-jie-jue-bing-fa-wen-ti.html">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
+<title>第七章 channel 另辟蹊径，解决并发问题</title>
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">第七章 channel 另辟蹊径，解决并发问题</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/12" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><h2>Channel 的应用场景</h2>
+<p>go 语言中流传很广的谚语：</p>
+<blockquote>
+<p>Don’t communicate by sharing memory, share memory by communicating.</p>
+<p>Go Proverbs by Rob Pike</p>
+</blockquote>
+<p>“执行业务处理的 goroutine 不要通过共享内存的方式通信，而是要通过 Channel 通信的方式分享数据。”</p>
+<p>“communicate by sharing memory”和“share memory by communicating”是两种不同的并发处理模式。“communicate by sharing memory”是传统的并发编程处理方式，就是指，共享的数据需要用锁进行保护，goroutine 需要获取到锁，才能并发访问数据。</p>
+<p>“share memory by communicating”则是类似于 CSP 模型的方式，通过通信的方式，一个 goroutine 可以把数据的“所有权”交给另外一个 goroutine（虽然 Go 中没有“所有权”的概念，但是从逻辑上说，你可以把它理解为是所有权的转移）。</p>
+<p>掌握这几种类型。</p>
+<ol>
+<li>
+<p><code class="notranslate">数据交流</code>：当作并发的 buffer 或者 queue，解决生产者 - 消费者问题。多个 goroutine 可以并发当作生产者（Producer）和消费者（Consumer）。</p>
+</li>
+<li>
+<p><code class="notranslate">数据传递</code>：一个 goroutine 将数据交给另一个 goroutine，相当于把数据的拥有权 (引用) 托付出去。</p>
+</li>
+<li>
+<p><code class="notranslate">信号通知</code>：一个 goroutine 可以将信号 (closing、closed、data ready 等) 传递给另一个或者另一组 goroutine 。</p>
+</li>
+<li>
+<p><code class="notranslate">任务编排</code>：可以让一组 goroutine 按照一定的顺序并发或者串行的执行，这就是编排的功能。</p>
+</li>
+<li>
+<p><code class="notranslate">锁</code>：利用 Channel 也可以实现互斥锁的机制。</p>
+</li>
+</ol>
+<h2>Channel 基本用法</h2>
+<p>可以往 Channel 中发送数据，也可以从 Channel 中接收数据，所以，Channel 类型分为<strong>只能接收</strong>、<strong>只能发送</strong>、<strong>既可以接收又可以发送</strong>三种类型。下面是它的语法定义：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">ChannelType</span> <span class="pl-c1">=</span> ( <span class="pl-s">"chan"</span> <span class="pl-c1">|</span> <span class="pl-s">"chan"</span> "<span class="pl-c1">&lt;-</span><span class="pl-s">" | "</span><span class="pl-c1">&lt;</span><span class="pl-c1">-</span><span class="pl-s">" "</span><span class="pl-s1">chan</span>" ) <span class="pl-s1">ElementType</span> .</pre></div>
+<p>相应地，Channel 的正确语法如下：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">chan</span> <span class="pl-s1">string</span>          <span class="pl-c">// 可以发送接收string</span>
+<span class="pl-k">chan</span><span class="pl-c1">&lt;-</span> <span class="pl-k">struct</span>{}      <span class="pl-c">// 只能发送struct{}</span>
+<span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">int</span>           <span class="pl-c">// 只能从chan接收int</span></pre></div>
+<p>把既能接收又能发送的 chan 叫做双向的 chan，把只能发送和只能接收的 chan 叫做单向的 chan。其中，“&lt;-”表示单向的 chan，如果你记不住，我告诉你一个简便的方法：<strong>这个箭头总是射向左边的，元素类型总在最右边。如果箭头指向 chan，就表示可以往 chan 中塞数据；如果箭头远离 chan，就表示 chan 会往外吐数据。</strong></p>
+<p>chan 中的元素是任意的类型，所以也可能是 chan 类型，比如下面的 chan 类型也是合法的：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">chan</span><span class="pl-c1">&lt;-</span> <span class="pl-k">chan</span> <span class="pl-s1">int</span>   
+<span class="pl-k">chan</span><span class="pl-c1">&lt;-</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-s1">int</span>  
+<span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-s1">int</span>
+<span class="pl-k">chan</span> (<span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">int</span>)</pre></div>
+<p>可是，怎么判定箭头符号属于哪个 chan 呢？其实，“&lt;-”有个规则，<strong>总是尽量和左边的 chan 结合</strong>（The &lt;- operator associates with the leftmost chan possible:），因此，上面的定义和下面的使用括号的划分是一样的：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">chan</span><span class="pl-c1">&lt;-</span> （<span class="pl-k">chan</span> <span class="pl-s1">int</span>） <span class="pl-c">// &lt;- 和第一个chan结合</span>
+<span class="pl-k">chan</span><span class="pl-c1">&lt;-</span> （<span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-s1">int</span>） <span class="pl-c">// 第一个&lt;-和最左边的chan结合，第二个&lt;-和左边第二个chan结合</span>
+<span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> （<span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-s1">int</span>） <span class="pl-c">// 第一个&lt;-和最左边的chan结合，第二个&lt;-和左边第二个chan结合 </span>
+<span class="pl-k">chan</span> (<span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">int</span>) <span class="pl-c">// 因为括号的原因，&lt;-和括号内第一个chan结合</span></pre></div>
+<p>通过 make，我们可以初始化一个 chan，<strong>未初始化的 chan 的零值是 nil</strong>。你可以设置它的<strong>容量</strong>，比如下面的 chan 的容量是 9527，我们把这样的 chan 叫做 <strong>buffered chan</strong>；如果没有设置，它的容量是 0，我们把这样的 chan 叫做 <strong>unbuffered chan</strong>。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">int</span>, <span class="pl-c1">9527</span>)</pre></div>
+<p>如果 chan 中还有数据，那么，从这个 chan 接收数据的时候就不会阻塞，如果 chan 还未满（<strong>“满”指达到其容量</strong>），给它发送数据也不会阻塞，否则就会阻塞。<strong>unbuffered chan</strong> 只有<strong>读写都准备好之后才不会阻塞</strong>，这也是很多使用 unbuffered chan 时的常见 Bug。</p>
+<h3>发送数据</h3>
+<p>往 chan 中发送一个数据使用“ch&lt;-”，发送数据是一条语句:</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">ch</span> <span class="pl-c1">&lt;-</span> <span class="pl-c1">2000</span></pre></div>
+<p>这里的 ch 是 chan int 类型或者是 chan &lt;-int</p>
+<h3>接收数据</h3>
+<p>从 chan 中接收一条数据使用“&lt;-ch”，接收数据也是一条语句：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate">  <span class="pl-s1">x</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">ch</span> <span class="pl-c">// 把接收的一条数据赋值给变量x</span>
+  <span class="pl-s1">foo</span>(<span class="pl-c1">&lt;-</span><span class="pl-s1">ch</span>) <span class="pl-c">// 把接收的一个的数据作为参数传给函数</span>
+  <span class="pl-c1">&lt;-</span><span class="pl-s1">ch</span> <span class="pl-c">// 丢弃接收的一条数据</span></pre></div>
+<p>这里的 ch 类型是 chan T 或者 &lt;-chan T。</p>
+<p>接收数据时，还可以返回两个值。<strong>第一个值是返回的 chan 中的元素</strong>，<strong>第二个值是 bool 类型</strong>，<strong>代表是否成功地从 chan 中读取到一个值</strong>，如果第二个参数是 false，chan 已经被 close 而且 chan 中没有缓存的数据，这个时候，第一个值是零值。所以，如果从 chan 读取到一个零值，可能是 sender 真正发送的零值，也可能是 closed 的并且没有缓存元素产生的零值。</p>
+<h3>其它操作</h3>
+<p>Go 内建的函数 <strong>close、cap、len</strong> 都可以操作 chan 类型：<strong>close</strong> 会把 chan 关闭掉，<strong>cap</strong> 返回 chan 的容量，<strong>len</strong> 返回 chan 中缓存的还未被取走的元素数量。</p>
+<p>send 和 recv 都可以作为 select 语句的 case clause，如下面的例子：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-k">var</span> <span class="pl-s1">ch</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">int</span>, <span class="pl-c1">10</span>)
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">10</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-k">select</span> {
+        <span class="pl-k">case</span> <span class="pl-s1">ch</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">i</span>:
+        <span class="pl-k">case</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">ch</span>:
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+        }
+    }
+}</pre></div>
+<p>chan 还可以应用于 for-range 语句中，比如：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"> <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }</pre></div>
+<p>或者是忽略读取的值，只是清空 chan：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">for</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+    }</pre></div>
+<h2>什么时候使用channel？</h2>
+<blockquote>
+<ol>
+<li>共享资源的并发访问使用传统并发原语；</li>
+<li>复杂的任务编排和消息传递使用 Channel；</li>
+<li>消息通知机制使用 Channel，除非只想 signal 一个 goroutine，才使用 Cond；</li>
+<li>简单等待所有任务的完成用 WaitGroup，也有 Channel 的推崇者用 Channel，都可以；</li>
+<li>需要和 Select 语句结合，使用 Channel；</li>
+<li>需要和超时配合时，使用 Channel 和 Context。</li>
+</ol>
+</blockquote>
+<h2>使用channel出现的一些常见错误</h2>
+<p>chan 的值和状态有多种情况，而不同的操作（send、recv、close）又可能得到不同的结果</p>
+<p>还有一个值得注意的点是，<strong>只要一个 chan 还有未读的数据，即使把它 close 掉，你还是可以继续把这些未读的数据消费完，之后才是读取零值数据。</strong></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a9c26377-2179-48a0-905c-d17c1ef8d8a2"><img src="https://github.com/user-attachments/assets/a9c26377-2179-48a0-905c-d17c1ef8d8a2" alt="Image" style="max-width: 100%;"></a></p>
+<p>下表列出了一些与通道（channel）操作相关的常见错误以及对应的错误类型和错误情况详情：</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>错误情况</th>
+<th>错误类型</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>向已关闭的通道发送数据</td>
+<td><code class="notranslate">panic: send on closed channel</code></td>
+<td>当通道已经被关闭时，再向通道发送数据会导致运行时错误。通道关闭后，不能再向其发送数据，否则会引发 panic。</td>
+</tr>
+<tr>
+<td>从已关闭的通道接收数据</td>
+<td><code class="notranslate">value, ok := &lt;-closedChannel</code></td>
+<td>当通道已经被关闭时，再从通道接收数据会返回类型的零值，并且 <code class="notranslate">ok</code> 值为 <code class="notranslate">false</code>。尝试从已关闭的通道接收数据会导致接收到的数据为零值。</td>
+</tr>
+<tr>
+<td>向未初始化的通道发送数据</td>
+<td><code class="notranslate">nil</code> channel</td>
+<td>当通道未初始化（为 <code class="notranslate">nil</code>）时，向其发送数据会导致运行时错误。在使用通道之前，应该通过 <code class="notranslate">make</code> 函数初始化通道。</td>
+</tr>
+<tr>
+<td>从未初始化的通道接收数据</td>
+<td><code class="notranslate">nil</code> channel</td>
+<td>当通道未初始化（为 <code class="notranslate">nil</code>）时，尝试从其接收数据会导致运行时错误。在使用通道之前，应该通过 <code class="notranslate">make</code> 函数初始化通道。</td>
+</tr>
+<tr>
+<td>在没有接收方的情况下关闭通道</td>
+<td><code class="notranslate">panic: close of nil channel</code></td>
+<td>当通道未初始化（为 <code class="notranslate">nil</code>）时，尝试关闭通道会导致运行时错误。在关闭通道之前，应该通过 <code class="notranslate">make</code> 函数初始化通道。</td>
+</tr>
+<tr>
+<td>在有缓冲通道已满时向通道发送数据</td>
+<td>阻塞等待</td>
+<td>当有缓冲通道已满时，继续向通道发送数据会导致发送操作阻塞，直到有缓冲区有足够的空间可用。如果没有其他 goroutine 接收数据，发送操作将一直阻塞。</td>
+</tr>
+<tr>
+<td>在无缓冲通道中没有接收方的情况下向通道发送数据</td>
+<td>阻塞等待</td>
+<td>在无缓冲通道中，发送操作和接收操作必须同时准备好，否则它们会相互阻塞。当没有其他 goroutine 准备接收数据时，发送操作将一直阻塞，直到有接收方准备好。</td>
+</tr>
+<tr>
+<td>在没有发送方的情况下从通道接收数据</td>
+<td>阻塞等待</td>
+<td>在没有发送方的情况下，从通道接收数据会导致接收操作阻塞，直到有发送方向通道发送数据。如果没有其他 goroutine 发送数据，接收操作将一直阻塞。</td>
+</tr>
+<tr>
+<td>使用 <code class="notranslate">range</code> 迭代一个未关闭的通道，并且没有其他 goroutine 向通道发送数据</td>
+<td>阻塞等待</td>
+<td>当使用 <code class="notranslate">range</code> 迭代一个未关闭的通道时，如果没有其他 goroutine 向通道发送数据，迭代操作会一直阻塞，直到有数据可接收。如果通道不被关闭，迭代操作将永远阻塞。</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2>reflect.SelectCase 包处理多项反射</h2>
+<p><code class="notranslate">reflect.SelectCase</code> 是 Go 语言中反射包（reflect package）中的一个类型，用于在 <code class="notranslate">select</code> 语句中进行通道选择操作。它提供了一种将通道和对应的操作（发送或接收）进行绑定的方式。</p>
+<p>下面是对 <code class="notranslate">reflect.SelectCase</code> 的用法进行详细解释，并附带一个代码示例：</p>
+<p><code class="notranslate">reflect.SelectCase</code> 类型的定义如下：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">SelectCase</span> <span class="pl-k">struct</span> {
+    <span class="pl-c1">Dir</span>  <span class="pl-smi">SelectDir</span>
+    <span class="pl-c1">Chan</span> <span class="pl-smi">Value</span>
+    <span class="pl-c1">Send</span> <span class="pl-smi">Value</span>
+    <span class="pl-c1">Recv</span> <span class="pl-smi">Value</span>
+}</pre></div>
+<p>其中，<code class="notranslate">SelectDir</code> 是一个枚举类型，表示通道操作的方向。它可以是以下两个值之一：</p>
+<ul>
+<li><code class="notranslate">SelectSend</code>：表示通道发送操作。</li>
+<li><code class="notranslate">SelectRecv</code>：表示通道接收操作。</li>
+</ul>
+<p><code class="notranslate">Value</code> 是一个 <code class="notranslate">reflect.Value</code> 类型的值，用于存储通道或通道操作的信息。</p>
+<p><code class="notranslate">reflect.SelectCase</code> 结构体的字段如下：</p>
+<ul>
+<li><code class="notranslate">Dir</code>：表示通道操作的方向，是一个 <code class="notranslate">SelectDir</code> 类型的值。</li>
+<li><code class="notranslate">Chan</code>：存储通道的 <code class="notranslate">reflect.Value</code> 类型的值。</li>
+<li><code class="notranslate">Send</code>：存储发送操作的 <code class="notranslate">reflect.Value</code> 类型的值。</li>
+<li><code class="notranslate">Recv</code>：存储接收操作的 <code class="notranslate">reflect.Value</code> 类型的值。</li>
+</ul>
+<p><code class="notranslate">reflect.SelectCase</code> 类型的对象可以用于构建 <code class="notranslate">select</code> 语句的 case。通过设置 <code class="notranslate">Dir</code> 字段来指定操作方向，然后将通道或操作相关的 <code class="notranslate">reflect.Value</code> 分配给相应的字段。</p>
+<p>以下是一个使用 <code class="notranslate">reflect.SelectCase</code> 的简单示例：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"reflect"</span>
+    <span class="pl-s">"time"</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">ch1</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">int</span>)
+    <span class="pl-s1">ch2</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">string</span>)
+
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-c1">2</span> <span class="pl-c1">*</span> <span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+        <span class="pl-s1">ch1</span> <span class="pl-c1">&lt;-</span> <span class="pl-c1">42</span>
+    }()
+
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-c1">3</span> <span class="pl-c1">*</span> <span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+        <span class="pl-s1">ch2</span> <span class="pl-c1">&lt;-</span> <span class="pl-s">"Hello, world!"</span>
+    }()
+
+    <span class="pl-s1">cases</span> <span class="pl-c1">:=</span> []reflect.<span class="pl-smi">SelectCase</span>{
+        {<span class="pl-s1">Dir</span>: <span class="pl-s1">reflect</span>.<span class="pl-c1">SelectRecv</span>, <span class="pl-s1">Chan</span>: <span class="pl-s1">reflect</span>.<span class="pl-c1">ValueOf</span>(<span class="pl-s1">ch1</span>)},
+        {<span class="pl-s1">Dir</span>: <span class="pl-s1">reflect</span>.<span class="pl-c1">SelectRecv</span>, <span class="pl-s1">Chan</span>: <span class="pl-s1">reflect</span>.<span class="pl-c1">ValueOf</span>(<span class="pl-s1">ch2</span>)},
+    }
+
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">2</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">chosen</span>, <span class="pl-s1">value</span>, <span class="pl-s1">_</span> <span class="pl-c1">:=</span> <span class="pl-s1">reflect</span>.<span class="pl-c1">Select</span>(<span class="pl-s1">cases</span>)
+        <span class="pl-k">switch</span> <span class="pl-s1">chosen</span> {
+        <span class="pl-k">case</span> <span class="pl-c1">0</span>:
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"Received from ch1:"</span>, <span class="pl-s1">value</span>.<span class="pl-c1">Interface</span>())
+        <span class="pl-k">case</span> <span class="pl-c1">1</span>:
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"Received from ch2:"</span>, <span class="pl-s1">value</span>.<span class="pl-c1">Interface</span>())
+        }
+    }
+}</pre></div>
+<p>在上述示例中，我们创建了两个通道 <code class="notranslate">ch1</code> 和 <code class="notranslate">ch2</code>。然后，我们分别在不同的 goroutine 中向这两个通道发送数据。接下来，我们使用 <code class="notranslate">reflect.SelectCase</code> 创建了一个包含两个 case 的切片 <code class="notranslate">cases</code>，每个 case 对应一个通道的接收操作。最后，我们使用 <code class="notranslate">reflect.Select</code> 在 <code class="notranslate">select</code> 语句中进行通道选择操作，根据选择的结果打印接收到的数据。</p>
+<p>运行上述代码，你会看到输出类似以下内容（具体的输出顺序可能有所不同）：</p>
+<pre class="notranslate"><code class="notranslate">Received from ch1: 42
+Received from ch2: Hello, world!
+</code></pre>
+<p>该示例演示了如何使用 <code class="notranslate">reflect.SelectCase</code> 构建 <code class="notranslate">select</code> 语句的 case，以便在运行时根据不同的通道接收操作选择不同的 case 进行处理。这种方法可以在动态场景下灵活地进行通道选择操作。</p>
+<h2>Channel的一些应用场景</h2>
+<h3>信号通知</h3>
+<p>chan 类型有这样一个特点：chan 如果为空，那么，receiver 接收数据的时候就会阻塞等待，直到 chan 被关闭或者有新的数据到来。利用这个机制，可以实现 wait/notify 的设计模式。</p>
+<p>代码示例如下：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"os"</span>
+    <span class="pl-s">"os/signal"</span>
+    <span class="pl-s">"syscall"</span>
+    <span class="pl-s">"time"</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-k">var</span> <span class="pl-s1">closing</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-k">var</span> <span class="pl-s1">closed</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-c">// 模拟业务处理</span>
+        <span class="pl-k">for</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">closing</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">default</span>:
+                <span class="pl-c">// ....... 业务计算</span>
+                <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-c1">100</span> <span class="pl-c1">*</span> <span class="pl-s1">time</span>.<span class="pl-c1">Millisecond</span>)
+            }
+        }
+    }()
+
+    <span class="pl-c">// 处理CTRL+C等中断信号</span>
+    <span class="pl-s1">termChan</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> os.<span class="pl-smi">Signal</span>)
+    <span class="pl-s1">signal</span>.<span class="pl-c1">Notify</span>(<span class="pl-s1">termChan</span>, <span class="pl-s1">syscall</span>.<span class="pl-c1">SIGINT</span>, <span class="pl-s1">syscall</span>.<span class="pl-c1">SIGTERM</span>)
+    <span class="pl-c1">&lt;-</span><span class="pl-s1">termChan</span>
+
+    <span class="pl-s1">close</span>(<span class="pl-s1">closing</span>)
+    <span class="pl-c">// 执行退出之前的清理动作</span>
+    <span class="pl-k">go</span> <span class="pl-s1">doCleanup</span>(<span class="pl-s1">closed</span>)
+
+    <span class="pl-k">select</span> {
+    <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">closed</span>:
+    <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">time</span>.<span class="pl-c1">After</span>(<span class="pl-s1">time</span>.<span class="pl-c1">Second</span>):
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"清理超时，不等了"</span>)
+    }
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"优雅退出"</span>)
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">doCleanup</span>(<span class="pl-s1">closed</span> <span class="pl-k">chan</span> <span class="pl-k">struct</span>{}) {
+    <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>((<span class="pl-s1">time</span>.<span class="pl-c1">Minute</span>))
+    <span class="pl-s1">close</span>(<span class="pl-s1">closed</span>)
+}</pre></div>
+<h3>锁</h3>
+<p>使用 chan 也可以实现互斥锁。在 chan 的内部实现中，就有一把互斥锁保护着它的所有字段。从外在表现上，chan 的发送和接收之间也存在着 happens-before 的关系，保证元素放进去之后，receiver 才能读取到（关于 happends-before 的关系，是指事件发生的先后顺序关系）</p>
+<p>要想使用 chan 实现互斥锁，至少有两种方式。一种方式是先初始化一个 capacity 等于 1 的 Channel，然后再放入一个元素。这个元素就代表锁，谁取得了这个元素，就相当于获取了这把锁。另一种方式是，先初始化一个 capacity 等于 1 的 Channel，它的“空槽”代表锁，谁能成功地把元素发送到这个 Channel，谁就获取了这把锁。</p>
+<p>代码如下：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"time"</span>
+)
+
+<span class="pl-c">// 使用chan实现互斥锁</span>
+<span class="pl-k">type</span> <span class="pl-smi">Mutex</span> <span class="pl-k">struct</span> {
+    <span class="pl-c1">ch</span> <span class="pl-k">chan</span> <span class="pl-k">struct</span>{}
+}
+
+<span class="pl-c">// 使用锁需要初始化</span>
+<span class="pl-k">func</span> <span class="pl-s1">NewMutex</span>() <span class="pl-c1">*</span><span class="pl-smi">Mutex</span> {
+    <span class="pl-s1">mu</span> <span class="pl-c1">:=</span> <span class="pl-c1">&amp;</span><span class="pl-smi">Mutex</span>{<span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-c1">1</span>)}
+    <span class="pl-s1">mu</span>.<span class="pl-c1">ch</span> <span class="pl-c1">&lt;-</span> <span class="pl-k">struct</span>{}{}
+    <span class="pl-k">return</span> <span class="pl-s1">mu</span>
+}
+
+<span class="pl-c">// 请求锁，直到获取到</span>
+<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Mutex</span>) <span class="pl-c1">Lock</span>() {
+    <span class="pl-c1">&lt;-</span><span class="pl-s1">m</span>.<span class="pl-c1">ch</span>
+}
+
+<span class="pl-c">// 解锁</span>
+<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Mutex</span>) <span class="pl-c1">Unlock</span>() {
+    <span class="pl-k">select</span> {
+    <span class="pl-k">case</span> <span class="pl-s1">m</span>.<span class="pl-c1">ch</span> <span class="pl-c1">&lt;-</span> <span class="pl-k">struct</span>{}{}:
+    <span class="pl-k">default</span>:
+        <span class="pl-s1">panic</span>(<span class="pl-s">"unlock of unlocked mutex"</span>)
+    }
+}
+
+<span class="pl-c">// 尝试获取锁</span>
+<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Mutex</span>) <span class="pl-c1">TryLock</span>() <span class="pl-smi">bool</span> {
+    <span class="pl-k">select</span> {
+    <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">m</span>.<span class="pl-c1">ch</span>:
+        <span class="pl-k">return</span> <span class="pl-c1">true</span>
+    <span class="pl-k">default</span>:
+    }
+    <span class="pl-k">return</span> <span class="pl-c1">false</span>
+}
+
+<span class="pl-c">// 加入一个超时的设置</span>
+<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Mutex</span>) <span class="pl-c1">LockTimeout</span>(<span class="pl-s1">timeout</span> time.<span class="pl-smi">Duration</span>) <span class="pl-smi">bool</span> {
+    <span class="pl-s1">timer</span> <span class="pl-c1">:=</span> <span class="pl-s1">time</span>.<span class="pl-c1">NewTimer</span>(<span class="pl-s1">timeout</span>)
+    <span class="pl-k">select</span> {
+    <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">m</span>.<span class="pl-c1">ch</span>:
+        <span class="pl-s1">timer</span>.<span class="pl-c1">Stop</span>()
+        <span class="pl-k">return</span> <span class="pl-c1">true</span>
+    <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">timer</span>.<span class="pl-c1">C</span>:
+    }
+    <span class="pl-k">return</span> <span class="pl-c1">false</span>
+}
+
+<span class="pl-c">// 锁是否已被持有</span>
+<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Mutex</span>) <span class="pl-c1">IsLocked</span>() <span class="pl-smi">bool</span> {
+    <span class="pl-k">return</span> <span class="pl-s1">len</span>(<span class="pl-s1">m</span>.<span class="pl-c1">ch</span>) <span class="pl-c1">==</span> <span class="pl-c1">0</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">m</span> <span class="pl-c1">:=</span> <span class="pl-s1">NewMutex</span>()
+    <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">TryLock</span>()
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"locked v %v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">ok</span>)
+    <span class="pl-s1">ok</span> <span class="pl-c1">=</span> <span class="pl-s1">m</span>.<span class="pl-c1">TryLock</span>()
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"locked %v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">ok</span>)
+}</pre></div>
+<p>可以用 buffer 等于 1 的 chan 实现互斥锁，在初始化这个锁的时候往 Channel 中先塞入一个元素，谁把这个元素取走，谁就获取了这把锁，把元素放回去，就是释放了锁。元素在放回到 chan 之前，不会有 goroutine 能从 chan 中取出元素的，这就保证了互斥性。</p>
+<h3>Or-Done 模式</h3>
+<p>Or-Done 模式是信号通知模式中更宽泛的一种模式。</p>
+<p>我们会使用“信号通知”实现某个任务执行完成后的通知机制，在实现时，我们为这个任务定义一个类型为 chan struct{}类型的 done 变量，等任务结束后，我们就可以 close 这个变量，然后，其它 receiver 就会收到这个通知。</p>
+<p>如果有多个任务，只要有任意一个任务执行完，我们就想获得这个信号，这就是 Or-Done 模式。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"time"</span>
+)
+
+<span class="pl-c">// refer to https://github.com/kat-co/concurrency-in-go-src/blob/master/concurrency-patterns-in-go/the-or-channel/fig-or-channel.go</span>
+<span class="pl-k">func</span> <span class="pl-s1">or</span>(<span class="pl-s1">channels</span> <span class="pl-c1">...</span><span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-k">switch</span> <span class="pl-s1">len</span>(<span class="pl-s1">channels</span>) {
+    <span class="pl-k">case</span> <span class="pl-c1">0</span>:
+        <span class="pl-k">return</span> <span class="pl-c1">nil</span>
+    <span class="pl-k">case</span> <span class="pl-c1">1</span>:
+        <span class="pl-k">return</span> <span class="pl-s1">channels</span>[<span class="pl-c1">0</span>]
+    }
+
+    <span class="pl-s1">orDone</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">orDone</span>)
+
+        <span class="pl-k">switch</span> <span class="pl-s1">len</span>(<span class="pl-s1">channels</span>) {
+        <span class="pl-k">case</span> <span class="pl-c1">2</span>:
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">channels</span>[<span class="pl-c1">0</span>]:
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">channels</span>[<span class="pl-c1">1</span>]:
+            }
+        <span class="pl-k">default</span>:
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">channels</span>[<span class="pl-c1">0</span>]:
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">channels</span>[<span class="pl-c1">1</span>]:
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">channels</span>[<span class="pl-c1">2</span>]:
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">or</span>(<span class="pl-s1">append</span>(<span class="pl-s1">channels</span>[<span class="pl-c1">3</span>:], <span class="pl-s1">orDone</span>)<span class="pl-c1">...</span>):
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">orDone</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">sig</span>(<span class="pl-s1">after</span> time.<span class="pl-smi">Duration</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-s1">c</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">c</span>)
+        <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-s1">after</span>)
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">c</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+
+    <span class="pl-s1">start</span> <span class="pl-c1">:=</span> <span class="pl-s1">time</span>.<span class="pl-c1">Now</span>()
+
+    <span class="pl-c1">&lt;-</span><span class="pl-s1">or</span>(
+        <span class="pl-s1">sig</span>(<span class="pl-c1">5</span><span class="pl-c1">*</span><span class="pl-s1">time</span>.<span class="pl-c1">Second</span>),
+        <span class="pl-s1">sig</span>(<span class="pl-c1">20</span><span class="pl-c1">*</span><span class="pl-s1">time</span>.<span class="pl-c1">Second</span>),
+        <span class="pl-s1">sig</span>(<span class="pl-c1">30</span><span class="pl-c1">*</span><span class="pl-s1">time</span>.<span class="pl-c1">Second</span>),
+        <span class="pl-s1">sig</span>(<span class="pl-c1">40</span><span class="pl-c1">*</span><span class="pl-s1">time</span>.<span class="pl-c1">Second</span>),
+        <span class="pl-s1">sig</span>(<span class="pl-c1">50</span><span class="pl-c1">*</span><span class="pl-s1">time</span>.<span class="pl-c1">Second</span>),
+        <span class="pl-s1">sig</span>(<span class="pl-c1">01</span><span class="pl-c1">*</span><span class="pl-s1">time</span>.<span class="pl-c1">Minute</span>),
+    )
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"done after %v"</span>, <span class="pl-s1">time</span>.<span class="pl-c1">Since</span>(<span class="pl-s1">start</span>))
+}</pre></div>
+<h3>扇入模式</h3>
+<p>扇入借鉴了数字电路的概念，它定义了单个逻辑门能够接受的数字信号输入最大量的术语。一个逻辑门可以有多个输入，一个输出。</p>
+<p>模块的扇入是指有多少个上级模块调用它。而对于我们这里的 Channel 扇入模式来说，就是指有多个源 Channel 输入、一个目的 Channel 输出的情况。扇入比就是源 Channel 数量比 1。</p>
+<p>每个源 Channel 的元素都会发送给目标 Channel，相当于目标 Channel 的 receiver 只需要监听目标 Channel，就可以接收所有发送给源 Channel 的数据。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"reflect"</span>
+    <span class="pl-s">"sync"</span>
+)
+
+<span class="pl-c">// https://github.com/campoy/justforfunc/blob/master/27-merging-chans/main.go</span>
+
+<span class="pl-k">func</span> <span class="pl-s1">fanIn</span>(<span class="pl-s1">chans</span> <span class="pl-c1">...</span><span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-s1">out</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">var</span> <span class="pl-s1">wg</span> sync.<span class="pl-smi">WaitGroup</span>
+        <span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-s1">len</span>(<span class="pl-s1">chans</span>))
+
+        <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">c</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">chans</span> {
+            <span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">c</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span>) {
+                <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">c</span> {
+                    <span class="pl-s1">out</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>
+                }
+                <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>()
+            }(<span class="pl-s1">c</span>)
+        }
+
+        <span class="pl-s1">wg</span>.<span class="pl-c1">Wait</span>()
+        <span class="pl-s1">close</span>(<span class="pl-s1">out</span>)
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">out</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">fanInReflect</span>(<span class="pl-s1">chans</span> <span class="pl-c1">...</span><span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-s1">out</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">out</span>)
+        <span class="pl-k">var</span> <span class="pl-s1">cases</span> []reflect.<span class="pl-smi">SelectCase</span>
+        <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">c</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">chans</span> {
+            <span class="pl-s1">cases</span> <span class="pl-c1">=</span> <span class="pl-s1">append</span>(<span class="pl-s1">cases</span>, reflect.<span class="pl-smi">SelectCase</span>{
+                <span class="pl-s1">Dir</span>:  <span class="pl-s1">reflect</span>.<span class="pl-c1">SelectRecv</span>,
+                <span class="pl-s1">Chan</span>: <span class="pl-s1">reflect</span>.<span class="pl-c1">ValueOf</span>(<span class="pl-s1">c</span>),
+            })
+        }
+
+        <span class="pl-k">for</span> <span class="pl-s1">len</span>(<span class="pl-s1">cases</span>) <span class="pl-c1">&gt;</span> <span class="pl-c1">0</span> {
+            <span class="pl-s1">i</span>, <span class="pl-s1">v</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">reflect</span>.<span class="pl-c1">Select</span>(<span class="pl-s1">cases</span>)
+            <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> { <span class="pl-c">//remove this case</span>
+                <span class="pl-s1">cases</span> <span class="pl-c1">=</span> <span class="pl-s1">append</span>(<span class="pl-s1">cases</span>[:<span class="pl-s1">i</span>], <span class="pl-s1">cases</span>[<span class="pl-s1">i</span><span class="pl-c1">+</span><span class="pl-c1">1</span>:]<span class="pl-c1">...</span>)
+                <span class="pl-k">continue</span>
+            }
+            <span class="pl-s1">out</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>.<span class="pl-c1">Interface</span>()
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">out</span>
+
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">fanInRec</span>(<span class="pl-s1">chans</span> <span class="pl-c1">...</span><span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-k">switch</span> <span class="pl-s1">len</span>(<span class="pl-s1">chans</span>) {
+    <span class="pl-k">case</span> <span class="pl-c1">0</span>:
+        <span class="pl-s1">c</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+        <span class="pl-s1">close</span>(<span class="pl-s1">c</span>)
+        <span class="pl-k">return</span> <span class="pl-s1">c</span>
+    <span class="pl-k">case</span> <span class="pl-c1">1</span>:
+        <span class="pl-k">return</span> <span class="pl-s1">chans</span>[<span class="pl-c1">0</span>]
+    <span class="pl-k">case</span> <span class="pl-c1">2</span>:
+        <span class="pl-k">return</span> <span class="pl-s1">mergeTwo</span>(<span class="pl-s1">chans</span>[<span class="pl-c1">0</span>], <span class="pl-s1">chans</span>[<span class="pl-c1">1</span>])
+    <span class="pl-k">default</span>:
+        <span class="pl-s1">m</span> <span class="pl-c1">:=</span> <span class="pl-s1">len</span>(<span class="pl-s1">chans</span>) <span class="pl-c1">/</span> <span class="pl-c1">2</span>
+        <span class="pl-k">return</span> <span class="pl-s1">mergeTwo</span>(
+            <span class="pl-s1">fanInRec</span>(<span class="pl-s1">chans</span>[:<span class="pl-s1">m</span>]<span class="pl-c1">...</span>),
+            <span class="pl-s1">fanInRec</span>(<span class="pl-s1">chans</span>[<span class="pl-s1">m</span>:]<span class="pl-c1">...</span>))
+    }
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">mergeTwo</span>(<span class="pl-s1">a</span>, <span class="pl-s1">b</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-s1">c</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">c</span>)
+        <span class="pl-k">for</span> <span class="pl-s1">a</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> <span class="pl-c1">||</span> <span class="pl-s1">b</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {    <span class="pl-c">//只要还有可读的chan</span>
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-s1">v</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">a</span>:
+                <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> {
+                    <span class="pl-s1">a</span> <span class="pl-c1">=</span> <span class="pl-c1">nil</span>    <span class="pl-c">// a 已关闭，设置为nil</span>
+                    <span class="pl-k">continue</span>
+                }
+                <span class="pl-s1">c</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>
+            <span class="pl-k">case</span> <span class="pl-s1">v</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">b</span>:
+                <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> {
+                    <span class="pl-s1">b</span> <span class="pl-c1">=</span> <span class="pl-c1">nil</span>    <span class="pl-c">// b 已关闭，设置为nil</span>
+                    <span class="pl-k">continue</span>
+                }
+                <span class="pl-s1">c</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">c</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-s1">s</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    <span class="pl-s1">values</span> <span class="pl-c1">:=</span> []<span class="pl-smi">int</span>{<span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>, <span class="pl-c1">4</span>, <span class="pl-c1">5</span>}
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">s</span>)
+
+        <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">values</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">s</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>:
+            }
+        }
+
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">s</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"fanIn by goroutine:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-c">// 直接模式</span>
+    <span class="pl-s1">ch</span> <span class="pl-c1">:=</span> <span class="pl-s1">fanIn</span>(<span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>), <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>), <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>))
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"fanIn by reflect:"</span>)
+    <span class="pl-c">// 超过两个chan时使用的反射形式</span>
+    <span class="pl-s1">ch</span> <span class="pl-c1">=</span> <span class="pl-s1">fanInReflect</span>(<span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>), <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>), <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>))
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"fanIn by recursion:"</span>)
+    <span class="pl-c">// 递归模式</span>
+    <span class="pl-s1">ch</span> <span class="pl-c1">=</span> <span class="pl-s1">fanInRec</span>(<span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>), <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>), <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span>))
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+}</pre></div>
+<h3>扇出模式</h3>
+<p>扇出模式只有一个输入源 Channel，有多个目标 Channel，扇出比就是 1 比目标 Channel 数的值，经常用在设计模式中的<strong>观察者模式</strong>中（观察者设计模式定义了对象间的一种一对多的组合关系。这样一来，一个对象的状态发生变化时，所有依赖于它的对象都会得到通知并自动刷新）。在观察者模式中，数据变动后，多个观察者都会收到这个变更信号</p>
+<p>代码如下</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"reflect"</span>
+)
+
+
+<span class="pl-k">func</span> <span class="pl-s1">fanOut</span>(<span class="pl-s1">ch</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">interface</span>{}, <span class="pl-s1">out</span> []<span class="pl-k">chan</span> <span class="pl-k">interface</span>{}, <span class="pl-s1">async</span> <span class="pl-smi">bool</span>) {
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-k">func</span>() { <span class="pl-c">//退出时关闭所有的输出chan</span>
+            <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">len</span>(<span class="pl-s1">out</span>); <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+                <span class="pl-s1">close</span>(<span class="pl-s1">out</span>[<span class="pl-s1">i</span>])
+            }
+        }()
+
+        <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> { <span class="pl-c">// 从输入chan中读取数据</span>
+            <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">v</span>
+            <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">len</span>(<span class="pl-s1">out</span>); <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+                <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-s1">i</span>
+                <span class="pl-k">if</span> <span class="pl-s1">async</span> { <span class="pl-c">//异步</span>
+                    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+                        <span class="pl-s1">out</span>[<span class="pl-s1">i</span>] <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span> <span class="pl-c">// 放入到输出chan中,异步方式</span>
+                    }()
+                } <span class="pl-k">else</span> {
+                    <span class="pl-s1">out</span>[<span class="pl-s1">i</span>] <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span> <span class="pl-c">// 放入到输出chan中，同步方式</span>
+                }
+            }
+        }
+    }()
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">fanOutReflect</span>(<span class="pl-s1">ch</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span>, <span class="pl-s1">out</span> []<span class="pl-k">chan</span> <span class="pl-smi">any</span>) {
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-k">func</span>() {
+            <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">len</span>(<span class="pl-s1">out</span>); <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+                <span class="pl-s1">close</span>(<span class="pl-s1">out</span>[<span class="pl-s1">i</span>])
+            }
+        }()
+
+        <span class="pl-s1">cases</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>([]reflect.<span class="pl-smi">SelectCase</span>, <span class="pl-s1">len</span>(<span class="pl-s1">out</span>))
+        <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">cases</span> {
+            <span class="pl-s1">cases</span>[<span class="pl-s1">i</span>].<span class="pl-c1">Dir</span> <span class="pl-c1">=</span> <span class="pl-s1">reflect</span>.<span class="pl-c1">SelectSend</span>
+        }
+
+        <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+            <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">v</span>
+            <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">cases</span> {
+                <span class="pl-s1">cases</span>[<span class="pl-s1">i</span>].<span class="pl-c1">Chan</span> <span class="pl-c1">=</span> <span class="pl-s1">reflect</span>.<span class="pl-c1">ValueOf</span>(<span class="pl-s1">out</span>[<span class="pl-s1">i</span>])
+                <span class="pl-s1">cases</span>[<span class="pl-s1">i</span>].<span class="pl-c1">Send</span> <span class="pl-c1">=</span> <span class="pl-s1">reflect</span>.<span class="pl-c1">ValueOf</span>(<span class="pl-s1">v</span>)
+            }
+
+            <span class="pl-k">for</span> <span class="pl-s1">_</span> <span class="pl-c1">=</span> <span class="pl-k">range</span> <span class="pl-s1">cases</span> { <span class="pl-c">// for each channel</span>
+                <span class="pl-s1">chosen</span>, <span class="pl-s1">_</span>, <span class="pl-s1">_</span> <span class="pl-c1">:=</span> <span class="pl-s1">reflect</span>.<span class="pl-c1">Select</span>(<span class="pl-s1">cases</span>)
+                <span class="pl-s1">cases</span>[<span class="pl-s1">chosen</span>].<span class="pl-c1">Chan</span> <span class="pl-c1">=</span> <span class="pl-s1">reflect</span>.<span class="pl-c1">ValueOf</span>(<span class="pl-c1">nil</span>)
+            }
+        }
+    }()
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">asStream</span>(<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">any</span> {
+    <span class="pl-s1">s</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    <span class="pl-s1">values</span> <span class="pl-c1">:=</span> []<span class="pl-smi">int</span>{<span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>, <span class="pl-c1">4</span>, <span class="pl-c1">5</span>}
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">s</span>)
+
+        <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">values</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">s</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>:
+            }
+        }
+
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">s</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">source</span> <span class="pl-c1">:=</span> <span class="pl-s1">asStream</span>(<span class="pl-c1">nil</span>)
+    <span class="pl-s1">channels</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>([]<span class="pl-k">chan</span> <span class="pl-smi">any</span>, <span class="pl-c1">5</span>)
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"fanOut"</span>)
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">channels</span>[<span class="pl-s1">i</span>] <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    }
+    <span class="pl-s1">fanOut</span>(<span class="pl-s1">source</span>, <span class="pl-s1">channels</span>, <span class="pl-c1">false</span>)
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-k">for</span> <span class="pl-s1">j</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">j</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">j</span><span class="pl-c1">++</span> {
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"channel#%d: %v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">j</span>, <span class="pl-c1">&lt;-</span><span class="pl-s1">channels</span>[<span class="pl-s1">j</span>])
+        }
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"fanOut By Reflect"</span>)
+    <span class="pl-s1">source</span> <span class="pl-c1">=</span> <span class="pl-s1">asStream</span>(<span class="pl-c1">nil</span>)
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">channels</span>[<span class="pl-s1">i</span>] <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">any</span>)
+    }
+    <span class="pl-s1">fanOutReflect</span>(<span class="pl-s1">source</span>, <span class="pl-s1">channels</span>)
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-k">for</span> <span class="pl-s1">j</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">j</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">j</span><span class="pl-c1">++</span> {
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"channel#%d: %v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">j</span>, <span class="pl-c1">&lt;-</span><span class="pl-s1">channels</span>[<span class="pl-s1">j</span>])
+        }
+    }
+}</pre></div>
+<h3>stream</h3>
+<p>一种把 Channel 当作流式管道使用的方式，也就是把 Channel 看作流（Stream），提供跳过几个元素，或者是只取其中的几个元素等方法。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">asStreamSte</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">values</span> <span class="pl-c1">...</span><span class="pl-smi">T</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">s</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>) <span class="pl-c">//创建一个unbuffered的channel</span>
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {       <span class="pl-c">// 启动一个goroutine，往s中塞数据</span>
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">s</span>) <span class="pl-c">// 退出时关闭chan</span>
+
+        <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">values</span> { <span class="pl-c">// 遍历数组</span>
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">s</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>: <span class="pl-c">// 将数组元素塞入到chan中</span>
+            }
+        }
+
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">s</span>
+}
+<span class="pl-k">func</span> <span class="pl-s1">asRepeatStream</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">values</span> <span class="pl-c1">...</span><span class="pl-smi">T</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">s</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">s</span>)
+        <span class="pl-k">for</span> {
+            <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">values</span> {
+                <span class="pl-k">select</span> {
+                <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                    <span class="pl-k">return</span>
+                <span class="pl-k">case</span> <span class="pl-s1">s</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>:
+                }
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">s</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">takeN</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">valueStream</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">num</span> <span class="pl-smi">int</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">takeStream</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>) <span class="pl-c">// 创建输出流</span>
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">takeStream</span>)
+        <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">num</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> { <span class="pl-c">// 只读取前num个元素</span>
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">takeStream</span> <span class="pl-c1">&lt;-</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">valueStream</span>: <span class="pl-c">//从输入流中读取元素</span>
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">takeStream</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">takeFn</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">valueStream</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>(<span class="pl-smi">any</span>) <span class="pl-smi">bool</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">takeStream</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">takeStream</span>)
+        <span class="pl-k">for</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">valueStream</span>:
+                <span class="pl-k">if</span> <span class="pl-s1">fn</span>(<span class="pl-s1">v</span>) {
+                    <span class="pl-s1">takeStream</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>
+                }
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">takeStream</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">takeWhile</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">valueStream</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>(<span class="pl-smi">any</span>) <span class="pl-smi">bool</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">takeStream</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">takeStream</span>)
+        <span class="pl-k">for</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">valueStream</span>:
+                <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">fn</span>(<span class="pl-s1">v</span>) {
+                    <span class="pl-k">return</span>
+                }
+                <span class="pl-s1">takeStream</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">takeStream</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">skipN</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">valueStream</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">num</span> <span class="pl-smi">int</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">takeStream</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">takeStream</span>)
+        <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">num</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">valueStream</span>:
+            }
+        }
+        <span class="pl-k">for</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">takeStream</span> <span class="pl-c1">&lt;-</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">valueStream</span>:
+            }
+        }
+    }()
+
+    <span class="pl-k">return</span> <span class="pl-s1">takeStream</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">skipFn</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">valueStream</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>(<span class="pl-smi">any</span>) <span class="pl-smi">bool</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">takeStream</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">takeStream</span>)
+        <span class="pl-k">for</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">valueStream</span>:
+                <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">fn</span>(<span class="pl-s1">v</span>) {
+                    <span class="pl-s1">takeStream</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>
+                }
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">takeStream</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">skipWhile</span>[<span class="pl-s1">T</span> <span class="pl-smi">any</span>](<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-s1">valueStream</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>(<span class="pl-smi">any</span>) <span class="pl-smi">bool</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span> {
+    <span class="pl-s1">takeStream</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">T</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">takeStream</span>)
+        <span class="pl-s1">take</span> <span class="pl-c1">:=</span> <span class="pl-c1">false</span>
+        <span class="pl-k">for</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">valueStream</span>:
+                <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">take</span> {
+                    <span class="pl-s1">take</span> <span class="pl-c1">=</span> <span class="pl-c1">!</span><span class="pl-s1">fn</span>(<span class="pl-s1">v</span>)
+                    <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">take</span> {
+                        <span class="pl-k">continue</span>
+                    }
+                }
+                <span class="pl-s1">takeStream</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>
+            }
+        }
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">takeStream</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"asStream:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-s1">ch</span> <span class="pl-c1">:=</span> <span class="pl-s1">asStreamSte</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>, <span class="pl-c1">4</span>, <span class="pl-c1">5</span>, <span class="pl-c1">6</span>, <span class="pl-c1">7</span>, <span class="pl-c1">8</span>, <span class="pl-c1">9</span>, <span class="pl-c1">10</span>)
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"asRepeatStream:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-s1">ch</span> <span class="pl-c1">=</span> <span class="pl-s1">asRepeatStream</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>, <span class="pl-c1">4</span>, <span class="pl-c1">5</span>, <span class="pl-c1">6</span>, <span class="pl-c1">7</span>, <span class="pl-c1">8</span>, <span class="pl-c1">9</span>, <span class="pl-c1">10</span>)
+    <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">ch</span> {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+        <span class="pl-s1">i</span><span class="pl-c1">++</span>
+        <span class="pl-k">if</span> <span class="pl-s1">i</span> <span class="pl-c1">==</span> <span class="pl-c1">20</span> {
+            <span class="pl-k">break</span>
+        }
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"takeN:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">takeN</span>(<span class="pl-s1">done</span>, <span class="pl-s1">asRepeatStream</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>), <span class="pl-c1">6</span>) {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-s1">evenFn</span> <span class="pl-c1">:=</span> <span class="pl-k">func</span>(<span class="pl-s1">v</span> <span class="pl-smi">any</span>) <span class="pl-smi">bool</span> {
+        <span class="pl-k">return</span> <span class="pl-s1">v</span>.(<span class="pl-smi">int</span>)<span class="pl-c1">%</span><span class="pl-c1">2</span> <span class="pl-c1">==</span> <span class="pl-c1">0</span>
+    }
+    <span class="pl-s1">lessFn</span> <span class="pl-c1">:=</span> <span class="pl-k">func</span>(<span class="pl-s1">v</span> <span class="pl-smi">any</span>) <span class="pl-smi">bool</span> {
+        <span class="pl-k">return</span> <span class="pl-s1">v</span>.(<span class="pl-smi">int</span>) <span class="pl-c1">&lt;</span> <span class="pl-c1">3</span>
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"takeFn:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-s1">i</span> <span class="pl-c1">=</span> <span class="pl-c1">0</span>
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">takeFn</span>(<span class="pl-s1">done</span>, <span class="pl-s1">asRepeatStream</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>), <span class="pl-s1">evenFn</span>) {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+        <span class="pl-s1">i</span><span class="pl-c1">++</span>
+        <span class="pl-k">if</span> <span class="pl-s1">i</span> <span class="pl-c1">==</span> <span class="pl-c1">20</span> {
+            <span class="pl-k">break</span>
+        }
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"takeWhile:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">takeWhile</span>(<span class="pl-s1">done</span>, <span class="pl-s1">asRepeatStream</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>), <span class="pl-s1">lessFn</span>) {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"skipN:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">takeN</span>(<span class="pl-s1">done</span>, <span class="pl-s1">skipN</span>(<span class="pl-s1">done</span>, <span class="pl-s1">asRepeatStream</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>), <span class="pl-c1">2</span>), <span class="pl-c1">4</span>) {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"skipFn:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">takeN</span>(<span class="pl-s1">done</span>, <span class="pl-s1">skipFn</span>(<span class="pl-s1">done</span>, <span class="pl-s1">asRepeatStream</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>), <span class="pl-s1">evenFn</span>), <span class="pl-c1">4</span>) {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"skipWhile:"</span>)
+    <span class="pl-s1">done</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{})
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">takeN</span>(<span class="pl-s1">done</span>, <span class="pl-s1">skipWhile</span>(<span class="pl-s1">done</span>, <span class="pl-s1">asRepeatStream</span>(<span class="pl-s1">done</span>, <span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>), <span class="pl-s1">lessFn</span>), <span class="pl-c1">4</span>) {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">v</span>)
+    }
+}</pre></div>
+<ol>
+<li>takeN：只取流中的前 n 个数据；</li>
+<li>takeFn：筛选流中的数据，只保留满足条件的数据；</li>
+<li>takeWhile：只取前面满足条件的数据，一旦不满足条件，就不再取；</li>
+<li>skipN：跳过流中前几个数据；</li>
+<li>skipFn：跳过满足条件的数据；</li>
+<li>skipWhile：跳过前面满足条件的数据，一旦不满足条件，当前这个元素和以后的元素都会输出给 Channel 的 receiver。</li>
+</ol>
+<h3>map-reduce</h3>
+<p>map-reduce 是一种处理数据的方式，最早是由 Google 公司研究提出的一种面向大规模数据处理的并行计算模型和方法，开源的版本是 hadoop，前几年比较火。</p>
+<p>要讲的并不是分布式的 map-reduce，而是单机单进程的 map-reduce 方法。</p>
+<p>map-reduce 分为两个步骤，第一步是映射（map），处理队列中的数据，第二步是规约（reduce），把列表中的每一个元素按照一定的处理方式处理成结果，放入到结果队列中。</p>
+<p>就像做汉堡一样，map 就是单独处理每一种食材，reduce 就是从每一份食材中取一部分，做成一个汉堡。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> <span class="pl-s">"fmt"</span>
+
+<span class="pl-k">func</span> <span class="pl-s1">mapChan</span>[<span class="pl-s1">T</span>, <span class="pl-s1">K</span> <span class="pl-smi">any</span>](<span class="pl-s1">in</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>(<span class="pl-smi">T</span>) <span class="pl-smi">K</span>) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">K</span> {
+    <span class="pl-s1">out</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">K</span>) <span class="pl-c">//创建一个输出chan</span>
+    <span class="pl-k">if</span> <span class="pl-s1">in</span> <span class="pl-c1">==</span> <span class="pl-c1">nil</span> {      <span class="pl-c">// 异常检查</span>
+        <span class="pl-s1">close</span>(<span class="pl-s1">out</span>)
+        <span class="pl-k">return</span> <span class="pl-s1">out</span>
+    }
+
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() { <span class="pl-c">// 启动一个goroutine,实现map的主要逻辑</span>
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">out</span>)
+
+        <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">in</span> { <span class="pl-c">// 从输入chan读取数据，执行业务操作，也就是map操作</span>
+            <span class="pl-s1">out</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">fn</span>(<span class="pl-s1">v</span>)
+        }
+    }()
+
+    <span class="pl-k">return</span> <span class="pl-s1">out</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">reduce</span>[<span class="pl-s1">T</span>, <span class="pl-s1">K</span> <span class="pl-smi">any</span>](<span class="pl-s1">in</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">T</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>(<span class="pl-s1">r</span> <span class="pl-smi">K</span>, <span class="pl-s1">v</span> <span class="pl-smi">T</span>) <span class="pl-smi">K</span>) <span class="pl-smi">K</span> {
+    <span class="pl-k">var</span> <span class="pl-s1">out</span> <span class="pl-smi">K</span>
+
+    <span class="pl-k">if</span> <span class="pl-s1">in</span> <span class="pl-c1">==</span> <span class="pl-c1">nil</span> {
+        <span class="pl-k">return</span> <span class="pl-s1">out</span>
+    }
+
+    <span class="pl-k">for</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">in</span> {  <span class="pl-c">// 实现reduce的主要逻辑</span>
+        <span class="pl-s1">out</span> <span class="pl-c1">=</span> <span class="pl-s1">fn</span>(<span class="pl-s1">out</span>, <span class="pl-s1">v</span>)
+    }
+
+    <span class="pl-k">return</span> <span class="pl-s1">out</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">asStreamMap</span>(<span class="pl-s1">done</span> <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-k">struct</span>{}) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">int</span> {
+    <span class="pl-s1">s</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-smi">int</span>)
+    <span class="pl-s1">values</span> <span class="pl-c1">:=</span> []<span class="pl-smi">int</span>{<span class="pl-c1">1</span>, <span class="pl-c1">2</span>, <span class="pl-c1">3</span>, <span class="pl-c1">4</span>, <span class="pl-c1">5</span>}
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">close</span>(<span class="pl-s1">s</span>)
+
+        <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">values</span> {
+            <span class="pl-k">select</span> {
+            <span class="pl-k">case</span> <span class="pl-c1">&lt;-</span><span class="pl-s1">done</span>:
+                <span class="pl-k">return</span>
+            <span class="pl-k">case</span> <span class="pl-s1">s</span> <span class="pl-c1">&lt;-</span> <span class="pl-s1">v</span>:
+            }
+        }
+
+    }()
+    <span class="pl-k">return</span> <span class="pl-s1">s</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">in</span> <span class="pl-c1">:=</span> <span class="pl-s1">asStreamMap</span>(<span class="pl-c1">nil</span>)
+
+    <span class="pl-c">// map op: time 10</span>
+    <span class="pl-s1">mapFn</span> <span class="pl-c1">:=</span> <span class="pl-k">func</span>(<span class="pl-s1">v</span> <span class="pl-smi">int</span>) <span class="pl-smi">int</span> {
+        <span class="pl-k">return</span> <span class="pl-s1">v</span> <span class="pl-c1">*</span> <span class="pl-c1">10</span>
+    }
+
+    <span class="pl-c">// reduce op: sum</span>
+    <span class="pl-s1">reduceFn</span> <span class="pl-c1">:=</span> <span class="pl-k">func</span>(<span class="pl-s1">r</span>, <span class="pl-s1">v</span> <span class="pl-smi">int</span>) <span class="pl-smi">int</span> {
+        <span class="pl-k">return</span> <span class="pl-s1">r</span> <span class="pl-c1">+</span> <span class="pl-s1">v</span>
+    }
+
+    <span class="pl-s1">sum</span> <span class="pl-c1">:=</span> <span class="pl-s1">reduce</span>(<span class="pl-s1">mapChan</span>(<span class="pl-s1">in</span>, <span class="pl-s1">mapFn</span>), <span class="pl-s1">reduceFn</span>)
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">sum</span>)
+}</pre></div>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/1ffb7560-ed6e-41fc-a09d-3bb364b82955"><img src="https://github.com/user-attachments/assets/1ffb7560-ed6e-41fc-a09d-3bb364b82955" alt="Image" style="max-width: 100%;"></a></p></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">宏渊的技术博客</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行"+diffDay+"天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+<script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
+
+</html>
