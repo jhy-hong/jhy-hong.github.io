@@ -269,7 +269,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 	}
 }</pre></div>
 <p>通过加入饥饿模式，可以避免把机会全都留给新来的 goroutine，保证了请求锁的 goroutine 获取锁的公平性，对于我们使用锁的业务代码来说，不会有业务一直等待锁不被处理。仔细阅读源码可以得知其设计的巧妙，但这个源码不可读性太强。</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/ac6075fc-230e-49d9-a08f-2dba65b4408c"><img width="768" alt="Image" src="https://github.com/user-attachments/assets/ac6075fc-230e-49d9-a08f-2dba65b4408c" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/ac6075fc-230e-49d9-a08f-2dba65b4408c"><img width="768" alt="Image" src="https://github.com/user-attachments/assets/ac6075fc-230e-49d9-a08f-2dba65b4408c" style="max-width: 100%; height: auto;"></a></p>
 <h2>使用互斥锁的易错场景</h2>
 <h3>Lock/Unlock 没有成对出现</h3>
 <p>Lock/Unlock 没有成对出现，就意味着会出现死锁的情况，或者是因为 Unlock 一个未加锁的 Mutex 而导致 panic。<br>

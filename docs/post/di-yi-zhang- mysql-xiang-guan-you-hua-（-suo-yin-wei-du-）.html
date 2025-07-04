@@ -568,7 +568,7 @@ CALL generate_orders();
 <p>我们尝试执行一下</p>
 <div class="highlight highlight-source-sql"><pre class="notranslate">EXPLAIN <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>1302706965<span class="pl-pds">'</span></span>;</pre></div>
 <p>发现其执行计划如下：</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533"><img src="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533" alt="Image" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533"><img src="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533" alt="Image" style="max-width: 100%; height: auto;"></a></p>
 <h3><code class="notranslate">EXPLAIN</code> 字段详细解释</h3>
 <markdown-accessiblity-table><table role="table">
 <thead>
@@ -827,12 +827,12 @@ EXPLAIN <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 <span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD INDEX idx_username_prefix (username(<span class="pl-c1">10</span>)); <span class="pl-c"><span class="pl-c">--</span> 前缀索引</span>
 <span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> orders ADD INDEX idx_user_product (user_id, product_id); <span class="pl-c"><span class="pl-c">--</span> 复合索引</span></pre></div>
 <p>可以看到执行计划如下：</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7"><img src="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7" alt="Image" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7"><img src="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7" alt="Image" style="max-width: 100%; height: auto;"></a></p>
 <p>可以看到其效率有一个质的提升。</p>
 <p>我们接下来试着修改相关查询改为模糊查询，以手机号后四位进行模糊查询：</p>
 <div class="highlight highlight-source-sql"><pre class="notranslate">explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">LIKE</span> <span class="pl-s"><span class="pl-pds">'</span>%6965<span class="pl-pds">'</span></span></pre></div>
 <p>执行计划为：</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541"><img src="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541" alt="Image" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541"><img src="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541" alt="Image" style="max-width: 100%; height: auto;"></a></p>
 <p>可以看到又再次退化到没有索引的状态，我们试着添加全文索引尝试</p>
 <div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD FULLTEXT INDEX idx_content_phone(phone);
 <span class="pl-k">SELECT</span> phone, MATCH(phone) AGAINST(<span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span>) <span class="pl-k">as</span> score
@@ -1041,7 +1041,7 @@ ALTER TABLE articles ADD FULLTEXT(ft_title);
 <span class="pl-c"><span class="pl-c">--</span> 查看执行计划</span>
 explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone_suffix_right <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span></pre></div>
 <p>执行计划如下：</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599"><img src="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599" alt="Image" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599"><img src="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599" alt="Image" style="max-width: 100%; height: auto;"></a></p>
 <h3>范围查询（部分使用索引）</h3>
 <div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> created_at <span class="pl-k">&gt;=</span> <span class="pl-s"><span class="pl-pds">'</span>2025-06-01<span class="pl-pds">'</span></span>;</pre></div>
 <ul>

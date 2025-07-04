@@ -110,7 +110,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>可以说，临界区就是一个被共享的资源，或者说是一个整体的一组共享资源，比如对数据库的访问、对某一个共享数据结构的操作、对一个 I/O 设备的使用、对一个连接池中的连接的调用，等等。</p>
 <p>如果很多线程同步访问临界区，就会造成访问或操作错误，这当然不是我们希望看到的结果。所以，我们可以使用互斥锁，限定临界区只能同时由一个线程持有。</p>
 <p>当临界区由一个线程持有的时候，其它线程如果想进入这个临界区，就会返回失败，或者是等待。直到持有的线程退出临界区，这些等待线程中的某一个才有机会接着持有这个临界区。</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/0c44c057-ea30-44c5-b883-94b87e8271a2"><img src="https://github.com/user-attachments/assets/0c44c057-ea30-44c5-b883-94b87e8271a2" alt="Image" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/0c44c057-ea30-44c5-b883-94b87e8271a2"><img src="https://github.com/user-attachments/assets/0c44c057-ea30-44c5-b883-94b87e8271a2" alt="Image" style="max-width: 100%; height: auto;"></a></p>
 <h2>两种模式​</h2>
 <ul>
 <li><strong>​正常模式​</strong>：<br>
@@ -194,7 +194,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
     <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">counter</span>) <span class="pl-c">// 正确输出1000</span>
 }</pre></div>
 <p>可以尝试运行发现结果每次可能都不一样</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/af42f84c-b3fa-4808-8c9e-52f706dc4515"><img src="https://github.com/user-attachments/assets/af42f84c-b3fa-4808-8c9e-52f706dc4515" alt="Image" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/af42f84c-b3fa-4808-8c9e-52f706dc4515"><img src="https://github.com/user-attachments/assets/af42f84c-b3fa-4808-8c9e-52f706dc4515" alt="Image" style="max-width: 100%; height: auto;"></a></p>
 <p>我们使用 sync.WaitGroup 来等待所有的 goroutine 执行完毕后，再输出最终的结果。sync.WaitGroup 这个同步原语我会在后面的课程中具体介绍，现在你只需要知道，我们使用它来控制等待一组 goroutine 全部做完任务。</p>
 <p>但是，每次运行，你都可能得到不同的结果，基本上不会得到理想中的1000的结果。</p>
 <p>这是因为，count++ 不是一个原子操作，它至少包含几个步骤，比如读取变量 count 的当前值，对这个值加 1，把结果再保存到 count 中。因为不是原子操作，就可能有并发的问题。</p>
@@ -202,7 +202,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>这个问题，有经验的开发人员比较容易发现，但是，很多时候，并发问题隐藏得非常深，即使是有经验的人，也不太容易发现或者 Debug 出来。</p>
 <p>针对这个问题，Go 提供了一个检测并发访问共享资源是否有问题的工具： <a href="https://go.dev/blog/race-detector" rel="nofollow">race detector</a>，它可以帮助我们自动发现程序有没有 data race 的问题。</p>
 <p>在编译（compile）、测试（test）、运行（run）Go 代码的时候，加上 race 参数，就有可能发现并发问题。比如在上面的例子中，我们可以加上 race 参数运行，检测一下是不是有并发问题。如果你 go run -race counter.go，就会输出警告信息。</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/097ae0c3-9aaa-461c-bbf7-adb481f8c516"><img src="https://github.com/user-attachments/assets/097ae0c3-9aaa-461c-bbf7-adb481f8c516" alt="Image" style="max-width: 100%;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/097ae0c3-9aaa-461c-bbf7-adb481f8c516"><img src="https://github.com/user-attachments/assets/097ae0c3-9aaa-461c-bbf7-adb481f8c516" alt="Image" style="max-width: 100%; height: auto;"></a></p>
 <p>这个警告不但会告诉你有并发问题，而且还会告诉你哪个 goroutine 在哪一行对哪个变量有写操作，同时，哪个 goroutine 在哪一行对哪个变量有读操作，就是这些并发的读写访问，引起了 data race。</p>
 <p>可以把获取锁、释放锁、计数加一的逻辑封装成一个方法，对外不需要暴露锁等逻辑：</p>
 <div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> <span class="pl-s1">main</span>() {
