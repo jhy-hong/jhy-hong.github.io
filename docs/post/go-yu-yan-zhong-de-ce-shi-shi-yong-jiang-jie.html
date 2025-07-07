@@ -320,7 +320,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 </ul>
 <h2>单元测试</h2>
 <p>目录结构</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/eb5fa6e6-eb15-4f64-83a7-1268bb5b558a"><img width="205" alt="Image" src="https://github.com/user-attachments/assets/eb5fa6e6-eb15-4f64-83a7-1268bb5b558a" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/eb5fa6e6-eb15-4f64-83a7-1268bb5b558a"><img width="205" alt="Image" src="https://github.com/user-attachments/assets/eb5fa6e6-eb15-4f64-83a7-1268bb5b558a" style="max-width: 100%;"></a></p>
 <p>源代码文件unit.go：</p>
 <div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> unitTesting
 
@@ -358,7 +358,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 </ul>
 <h2>基准测试</h2>
 <p><em>目录结构</em></p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/168950e5-21e7-44d5-a653-7e89249df538"><img src="https://github.com/user-attachments/assets/168950e5-21e7-44d5-a653-7e89249df538" alt="Image" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/168950e5-21e7-44d5-a653-7e89249df538"><img src="https://github.com/user-attachments/assets/168950e5-21e7-44d5-a653-7e89249df538" alt="Image" style="max-width: 100%;"></a></p>
 <p>源代码文件 benchmakr.go</p>
 <div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> benchmarkTest
 
@@ -401,7 +401,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>性能测试函数的命名规则为BenchmarkXxx，其中Xxx为自定义的标识，需要以大写字母开头，通常为待测函数</p>
 <p>testing.B提供了一系列用于辅助性能测试的方法或成员，如上面的b.N表示循环执行的次数，而N值不用程序员关心，N值是动态调整的，直到可靠的算出程序执行时间后才会停止。具体执行次数会在执行结束后打印出来。</p>
 <p><strong>执行测试</strong></p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/ce226c0c-9a36-4bb2-a2f0-f8274a3b2b50"><img src="https://github.com/user-attachments/assets/ce226c0c-9a36-4bb2-a2f0-f8274a3b2b50" alt="Image" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/ce226c0c-9a36-4bb2-a2f0-f8274a3b2b50"><img src="https://github.com/user-attachments/assets/ce226c0c-9a36-4bb2-a2f0-f8274a3b2b50" alt="Image" style="max-width: 100%;"></a></p>
 <p>-bench为go test的flag，该flag表示go test进行性能测试</p>
 <p><strong>小结</strong></p>
 <ul>
@@ -417,7 +417,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 </ul>
 <h2>示例测试</h2>
 <p><em>目录结构</em></p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/9b3cd7ae-5b8d-404e-8170-6cd19b033d2d"><img src="https://github.com/user-attachments/assets/9b3cd7ae-5b8d-404e-8170-6cd19b033d2d" alt="Image" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/9b3cd7ae-5b8d-404e-8170-6cd19b033d2d"><img src="https://github.com/user-attachments/assets/9b3cd7ae-5b8d-404e-8170-6cd19b033d2d" alt="Image" style="max-width: 100%;"></a></p>
 <p>源代码文件 example.go</p>
 <div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> exampleTest
 
@@ -516,13 +516,13 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
     }
 }</pre></div>
 <p>执行时带入参数：</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/b1738d2b-22e1-4cfb-9120-9fab40df48e5"><img width="506" alt="Image" src="https://github.com/user-attachments/assets/b1738d2b-22e1-4cfb-9120-9fab40df48e5" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/b1738d2b-22e1-4cfb-9120-9fab40df48e5"><img width="506" alt="Image" src="https://github.com/user-attachments/assets/b1738d2b-22e1-4cfb-9120-9fab40df48e5" style="max-width: 100%;"></a></p>
 <p>2)-json</p>
 <p>-json用于指示go test将结果转换成json格式，以便在自动化测试解析时使用</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a54c1683-142d-4539-a77d-e7122c307bfd"><img width="1047" alt="Image" src="https://github.com/user-attachments/assets/a54c1683-142d-4539-a77d-e7122c307bfd" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a54c1683-142d-4539-a77d-e7122c307bfd"><img width="1047" alt="Image" src="https://github.com/user-attachments/assets/a54c1683-142d-4539-a77d-e7122c307bfd" style="max-width: 100%;"></a></p>
 <p>3）-o</p>
 <p>-o指定生成的二进制可执行程序，并执行测试，测试结束不会删除该程序</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/44f75367-511e-4b9a-82e0-a5c8dea80d11"><img width="538" alt="Image" src="https://github.com/user-attachments/assets/44f75367-511e-4b9a-82e0-a5c8dea80d11" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/44f75367-511e-4b9a-82e0-a5c8dea80d11"><img width="538" alt="Image" src="https://github.com/user-attachments/assets/44f75367-511e-4b9a-82e0-a5c8dea80d11" style="max-width: 100%;"></a></p>
 <h3>控制测试的参数</h3>
 <p>1）-bench regexp</p>
 <p>go test默认不执行性能测试，使用-bench才可以运行，而且只运行性能测试函数</p>
@@ -548,7 +548,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>3）-count n</p>
 <p>-count 指定每个测试执行的次数，默认执行一次</p>
 <p>例如：</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/2d20416b-f28f-44e5-9aef-6de3651be67f"><img width="554" alt="Image" src="https://github.com/user-attachments/assets/2d20416b-f28f-44e5-9aef-6de3651be67f" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/2d20416b-f28f-44e5-9aef-6de3651be67f"><img width="554" alt="Image" src="https://github.com/user-attachments/assets/2d20416b-f28f-44e5-9aef-6de3651be67f" style="max-width: 100%;"></a></p>
 <p>5）-failfast</p>
 <p>默认情况下，go test 将执行所有匹配的测试i，并最后打印测试结果，无论成功或失败</p>
 <p>-failfast 指定如果测试出现失败，则立即停止测试。在有大量的测试需要执行时，这样能够更快的发现问题</p>
@@ -569,7 +569,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>性能测试下，总是打印日志，因为日志又是会影响性能结果</p>
 <p>11）-benchmem</p>
 <p>默认情况下，性能测试只打印运行次数、每个操作耗时。使用-bencheme则可以打印每个操作分配的字节数和每个操作分配的对象数</p>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/af798a9a-b748-4551-ac50-041bfd8fd9c6"><img width="848" alt="Image" src="https://github.com/user-attachments/assets/af798a9a-b748-4551-ac50-041bfd8fd9c6" style="max-width: 100%; height: auto;"></a></p>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/af798a9a-b748-4551-ac50-041bfd8fd9c6"><img width="848" alt="Image" src="https://github.com/user-attachments/assets/af798a9a-b748-4551-ac50-041bfd8fd9c6" style="max-width: 100%;"></a></p>
 <h2>benchstat</h2>
 <p>分析benchmark的结果</p>
 <p>官方推荐的性能测试分析工具benchstat</p>
@@ -577,7 +577,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <blockquote>
 <p>benchstat [options] old.txt [new.txt] [more.txt...]</p>
 </blockquote>
-<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a1cdef7f-5234-4817-b0cd-5d5dcda08e63"><img width="794" alt="Image" src="https://github.com/user-attachments/assets/a1cdef7f-5234-4817-b0cd-5d5dcda08e63" style="max-width: 100%; height: auto;"></a></p></div>
+<p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a1cdef7f-5234-4817-b0cd-5d5dcda08e63"><img width="794" alt="Image" src="https://github.com/user-attachments/assets/a1cdef7f-5234-4817-b0cd-5d5dcda08e63" style="max-width: 100%;"></a></p></div>
 <div style="font-size:small;margin-top:8px;float:right;"></div>
 
 <button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
