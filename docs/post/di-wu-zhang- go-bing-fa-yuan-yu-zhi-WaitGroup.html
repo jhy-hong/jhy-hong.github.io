@@ -17,7 +17,7 @@
 <meta property="og:url" content="https://jhy-hong.github.io/post/di-wu-zhang-%20go-bing-fa-yuan-yu-zhi-WaitGroup.html">
 <meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
 <title>第五章 go并发原语之WaitGroup</title>
-
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
 
 
 </head>
@@ -41,7 +41,17 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
     body {padding: 8px;}
     .postTitle{font-size:24px;}
 }
-
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
 </style>
 
 
@@ -78,36 +88,34 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>比如，我们要完成一个大的任务，需要使用并行的 <code class="notranslate">goroutine</code> 执行三个小任务，只有这三个小任务都完成，我们才能去执行后面的任务。如果通过轮询的方式定时询问三个小任务是否完成，会存在两个问题：一是，性能比较低，因为三个小任务可能早就完成了，却要等很长时间才被轮询到；二是，会有很多无谓的轮询，空耗 CPU 资源。</p>
 <h2>WaitGroup的基本用法</h2>
 <p>典型用法示例：</p>
-<pre lang="go" class="notranslate"><code class="notranslate">package main
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
 
-import (
-    "fmt"
-    "sync"
-    "time"
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"sync"</span>
+    <span class="pl-s">"time"</span>
 )
 
-func main() {
-    var wg sync.WaitGroup
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-k">var</span> <span class="pl-s1">wg</span> sync.<span class="pl-smi">WaitGroup</span>
 
-    // 假设要并发启动 3 个任务
-    taskCount := 3
-    wg.Add(taskCount) // 将内部计数器 +3
+    <span class="pl-c">// 假设要并发启动 3 个任务</span>
+    <span class="pl-s1">taskCount</span> <span class="pl-c1">:=</span> <span class="pl-c1">3</span>
+    <span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-s1">taskCount</span>) <span class="pl-c">// 将内部计数器 +3</span>
 
-    for i := 1; i &lt;= taskCount; i++ {
-        go func(id int) {
-            defer wg.Done() // 在 goroutine 退出时将计数器 -1
-            // 模拟实际工作
-            time.Sleep(time.Duration(id) * 500 * time.Millisecond)
-            fmt.Printf("任务 %d 执行完毕\n", id)
-        }(i)
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">1</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;=</span> <span class="pl-s1">taskCount</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">id</span> <span class="pl-smi">int</span>) {
+            <span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>() <span class="pl-c">// 在 goroutine 退出时将计数器 -1</span>
+            <span class="pl-c">// 模拟实际工作</span>
+            <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-s1">time</span>.<span class="pl-c1">Duration</span>(<span class="pl-s1">id</span>) <span class="pl-c1">*</span> <span class="pl-c1">500</span> <span class="pl-c1">*</span> <span class="pl-s1">time</span>.<span class="pl-c1">Millisecond</span>)
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"任务 %d 执行完毕<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">id</span>)
+        }(<span class="pl-s1">i</span>)
     }
 
-    // 在 main goroutine 中等待所有子 goroutine 完成
-    wg.Wait() // 阻塞，直到内部计数器归零
-    fmt.Println("所有任务已完成")
-}
-
-</code></pre>
+    <span class="pl-c">// 在 main goroutine 中等待所有子 goroutine 完成</span>
+    <span class="pl-s1">wg</span>.<span class="pl-c1">Wait</span>() <span class="pl-c">// 阻塞，直到内部计数器归零</span>
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"所有任务已完成"</span>)
+}</pre></div>
 <ul>
 <li><strong><code class="notranslate">wg.Add(n int)</code></strong>：将内部计数器加上 <code class="notranslate">n</code>。一般在启动对应数量的 goroutine 前调用。</li>
 <li><strong><code class="notranslate">wg.Done()</code></strong>：等价于 <code class="notranslate">wg.Add(-1)</code>。表示“当前 goroutine 完成一个任务”，将内部计数器减 1。通常放在 goroutine 的 <code class="notranslate">defer</code> 中，确保无论是否出错都会执行。</li>
@@ -116,15 +124,14 @@ func main() {
 <h2>WaitGroup 的实现</h2>
 <h3>WaitGroup的数据结构</h3>
 <p>在源码 <code class="notranslate">src/runtime/sema.go</code> 与 <code class="notranslate">src/sync/waitgroup.go</code> 中可以看到，<code class="notranslate">WaitGroup</code> 定义为：</p>
-<pre lang="go" class="notranslate"><code class="notranslate">type WaitGroup struct {
-	noCopy noCopy
-	// state: 64 位无符号整数
-    // 高 32 位 (state1) 用来记录等待的 goroutine（调用 Wait 并阻塞的 goroutine）数目
-    // 低 32 位 (state0) 用来记录计数器（Add/Done 相加减的结果）
-	state atomic.Uint64 // high 32 bits are counter, low 32 bits are waiter count.  内部字段，具体布局随版本而变化
-	sema  uint32 // futex 信号量，供被阻塞的 Wait() &amp; Done() 使用
-}
-</code></pre>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">WaitGroup</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">noCopy</span> <span class="pl-smi">noCopy</span>
+	<span class="pl-c">// state: 64 位无符号整数</span>
+    <span class="pl-c">// 高 32 位 (state1) 用来记录等待的 goroutine（调用 Wait 并阻塞的 goroutine）数目</span>
+    <span class="pl-c">// 低 32 位 (state0) 用来记录计数器（Add/Done 相加减的结果）</span>
+	<span class="pl-c1">state</span> atomic.<span class="pl-smi">Uint64</span> <span class="pl-c">// high 32 bits are counter, low 32 bits are waiter count.  内部字段，具体布局随版本而变化</span>
+	<span class="pl-c1">sema</span>  <span class="pl-smi">uint32</span> <span class="pl-c">// futex 信号量，供被阻塞的 Wait() &amp; Done() 使用</span>
+}</pre></div>
 <ul>
 <li><strong><code class="notranslate">state0</code>（低 32 位）</strong>：表示当前“未完成任务”的计数（等同 <code class="notranslate">Add() - Done()</code>）。</li>
 <li><strong><code class="notranslate">state1</code>（高 32 位）</strong>：表示有多少个 goroutine 正在执行 <code class="notranslate">Wait()</code> 并被阻塞，等待计数归零。</li>
@@ -134,98 +141,96 @@ func main() {
 <p>注意：实际源码中将 <code class="notranslate">state1</code> 和 <code class="notranslate">state0</code> 封装到一个 64 位整数组件里，通过原子操作（<code class="notranslate">atomic.AddUint64</code> 等）同时修改这两部分</p>
 </blockquote>
 <h3>Add方法逻辑</h3>
-<pre lang="go" class="notranslate"><code class="notranslate">// Add 将 WaitGroup 的计数器增加或减少 delta。
-// 当 delta 为正时，表示有新的任务加入；当 delta 为负时，表示有任务完成。
-// 如果在有等待者时将计数器从正数减到 0，会释放所有阻塞在 Wait() 上的 goroutine。
-func (wg *WaitGroup) Add(delta int) {
-    // 下面是针对 Go race detector 的额外逻辑，用于捕捉竞态情况：
-    if race.Enabled {
-        if delta &lt; 0 {
-            // 当 delta &lt; 0（即 Done 操作）时，需要与 Wait() 的释放进行同步。
-            // race.ReleaseMerge 用于告诉检测器，“我在此处与 Wait 进行合并同步”。
-            race.ReleaseMerge(unsafe.Pointer(wg))
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// Add 将 WaitGroup 的计数器增加或减少 delta。</span>
+<span class="pl-c">// 当 delta 为正时，表示有新的任务加入；当 delta 为负时，表示有任务完成。</span>
+<span class="pl-c">// 如果在有等待者时将计数器从正数减到 0，会释放所有阻塞在 Wait() 上的 goroutine。</span>
+<span class="pl-k">func</span> (<span class="pl-s1">wg</span> <span class="pl-c1">*</span><span class="pl-smi">WaitGroup</span>) <span class="pl-c1">Add</span>(<span class="pl-s1">delta</span> <span class="pl-smi">int</span>) {
+    <span class="pl-c">// 下面是针对 Go race detector 的额外逻辑，用于捕捉竞态情况：</span>
+    <span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+        <span class="pl-k">if</span> <span class="pl-s1">delta</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">0</span> {
+            <span class="pl-c">// 当 delta &lt; 0（即 Done 操作）时，需要与 Wait() 的释放进行同步。</span>
+            <span class="pl-c">// race.ReleaseMerge 用于告诉检测器，“我在此处与 Wait 进行合并同步”。</span>
+            <span class="pl-s1">race</span>.<span class="pl-c1">ReleaseMerge</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-s1">wg</span>))
         }
-        // 在执行后续对 wg.state 的原子操作时，先禁用 race 检测
-        race.Disable()
-        defer race.Enable() // 在函数结束时重新启用 race 检测
+        <span class="pl-c">// 在执行后续对 wg.state 的原子操作时，先禁用 race 检测</span>
+        <span class="pl-s1">race</span>.<span class="pl-c1">Disable</span>()
+        <span class="pl-k">defer</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>() <span class="pl-c">// 在函数结束时重新启用 race 检测</span>
     }
 
-    // =============================== 核心原子操作 ===============================
-    // state 是一个 64 位整数，由高 32 位和低 32 位组成。
-    // - 高 32 位 (v) 表示 WaitGroup 的当前计数，即还有多少任务未完成。
-    // - 低 32 位 (w) 表示当前有多少个 goroutine 正在 Wait() 中被阻塞，等待计数归零。
-    //
-    // 这里执行 Add(delta) 时，将 delta &lt;&lt; 32，左移到“高 32 位”上，然后原子累加到 wg.state 上。
-    // Add 返回加完之后的完整 64 位值。
-    state := wg.state.Add(uint64(delta) &lt;&lt; 32)
+    <span class="pl-c">// =============================== 核心原子操作 ===============================</span>
+    <span class="pl-c">// state 是一个 64 位整数，由高 32 位和低 32 位组成。</span>
+    <span class="pl-c">// - 高 32 位 (v) 表示 WaitGroup 的当前计数，即还有多少任务未完成。</span>
+    <span class="pl-c">// - 低 32 位 (w) 表示当前有多少个 goroutine 正在 Wait() 中被阻塞，等待计数归零。</span>
+    <span class="pl-c">//</span>
+    <span class="pl-c">// 这里执行 Add(delta) 时，将 delta &lt;&lt; 32，左移到“高 32 位”上，然后原子累加到 wg.state 上。</span>
+    <span class="pl-c">// Add 返回加完之后的完整 64 位值。</span>
+    <span class="pl-s1">state</span> <span class="pl-c1">:=</span> <span class="pl-s1">wg</span>.<span class="pl-c1">state</span>.<span class="pl-c1">Add</span>(<span class="pl-s1">uint64</span>(<span class="pl-s1">delta</span>) <span class="pl-c1">&lt;&lt;</span> <span class="pl-c1">32</span>)
 
-    // 从 state 中解析出：
-    // v：高 32 位，表示“未完成任务”的数量
-    // w：低 32 位，表示“等待者”的数量
-    v := int32(state &gt;&gt; 32) // 高 32 位转换为 int32，即当前的计数值
-    w := uint32(state)      // 低 32 位，即当前等待者的数量
+    <span class="pl-c">// 从 state 中解析出：</span>
+    <span class="pl-c">// v：高 32 位，表示“未完成任务”的数量</span>
+    <span class="pl-c">// w：低 32 位，表示“等待者”的数量</span>
+    <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">int32</span>(<span class="pl-s1">state</span> <span class="pl-c1">&gt;&gt;</span> <span class="pl-c1">32</span>) <span class="pl-c">// 高 32 位转换为 int32，即当前的计数值</span>
+    <span class="pl-s1">w</span> <span class="pl-c1">:=</span> <span class="pl-s1">uint32</span>(<span class="pl-s1">state</span>)      <span class="pl-c">// 低 32 位，即当前等待者的数量</span>
 
-    // race 检测：当 delta&gt;0，并且 v==delta（即原来计数是 0，现在是 delta）
-    // 说明这是第一次真正将计数从 0 推到正数。为了与可能已有的 Wait() 竞态，这里做一次“读”操作触发同步
-    if race.Enabled &amp;&amp; delta &gt; 0 &amp;&amp; v == int32(delta) {
-        // 标记一下，表示“我读了一下 wg.sema”，让 race detector 能知道 Add 与 Wait 之间的依赖
-        race.Read(unsafe.Pointer(&amp;wg.sema))
+    <span class="pl-c">// race 检测：当 delta&gt;0，并且 v==delta（即原来计数是 0，现在是 delta）</span>
+    <span class="pl-c">// 说明这是第一次真正将计数从 0 推到正数。为了与可能已有的 Wait() 竞态，这里做一次“读”操作触发同步</span>
+    <span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">delta</span> <span class="pl-c1">&gt;</span> <span class="pl-c1">0</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">v</span> <span class="pl-c1">==</span> <span class="pl-s1">int32</span>(<span class="pl-s1">delta</span>) {
+        <span class="pl-c">// 标记一下，表示“我读了一下 wg.sema”，让 race detector 能知道 Add 与 Wait 之间的依赖</span>
+        <span class="pl-s1">race</span>.<span class="pl-c1">Read</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">wg</span>.<span class="pl-c1">sema</span>))
     }
 
-    // ============ 检查负数计数的 panic 情况 ============
-    if v &lt; 0 {
-        // 如果 v&lt;0，说明调用者做了多余的 Done（Add(-1) 超过了 Add() 的次数），导致计数器变为负数。
-        panic("sync: negative WaitGroup counter")
+    <span class="pl-c">// ============ 检查负数计数的 panic 情况 ============</span>
+    <span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">0</span> {
+        <span class="pl-c">// 如果 v&lt;0，说明调用者做了多余的 Done（Add(-1) 超过了 Add() 的次数），导致计数器变为负数。</span>
+        <span class="pl-s1">panic</span>(<span class="pl-s">"sync: negative WaitGroup counter"</span>)
     }
 
-    // ============ 检查 Add 与 Wait 并发使用的 panic 情况 ============
-    // 当 w != 0，说明当前已经有至少 1 个 goroutine 在 Wait() 阻塞（等待者 != 0）。
-    // 如果又发生了 delta &gt; 0 且 v == delta（即原来的计数为 0，现在正好被设为 delta），
-    // 也就意味着“在有等待者挂起时，又从 0 重新开始 Add”，这属于 WaitGroup 不允许的误用，
-    // 会导致竞态：因为 Wait() 假定一旦看见计数是0，就不再把自己计入等待者。
-    // 既然此刻已有等待者，却又“首次 Add”，这种用法被认为是不安全的，故 panic。
-    if w != 0 &amp;&amp; delta &gt; 0 &amp;&amp; v == int32(delta) {
-        panic("sync: WaitGroup misuse: Add called concurrently with Wait")
+    <span class="pl-c">// ============ 检查 Add 与 Wait 并发使用的 panic 情况 ============</span>
+    <span class="pl-c">// 当 w != 0，说明当前已经有至少 1 个 goroutine 在 Wait() 阻塞（等待者 != 0）。</span>
+    <span class="pl-c">// 如果又发生了 delta &gt; 0 且 v == delta（即原来的计数为 0，现在正好被设为 delta），</span>
+    <span class="pl-c">// 也就意味着“在有等待者挂起时，又从 0 重新开始 Add”，这属于 WaitGroup 不允许的误用，</span>
+    <span class="pl-c">// 会导致竞态：因为 Wait() 假定一旦看见计数是0，就不再把自己计入等待者。</span>
+    <span class="pl-c">// 既然此刻已有等待者，却又“首次 Add”，这种用法被认为是不安全的，故 panic。</span>
+    <span class="pl-k">if</span> <span class="pl-s1">w</span> <span class="pl-c1">!=</span> <span class="pl-c1">0</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">delta</span> <span class="pl-c1">&gt;</span> <span class="pl-c1">0</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">v</span> <span class="pl-c1">==</span> <span class="pl-s1">int32</span>(<span class="pl-s1">delta</span>) {
+        <span class="pl-s1">panic</span>(<span class="pl-s">"sync: WaitGroup misuse: Add called concurrently with Wait"</span>)
     }
 
-    // ============ 如果当前计数仍然 &gt; 0，或者当前没有等待者，直接返回 ============
-    // v &gt; 0 表示计数器不为 0，说明还有子任务尚未完成，此时无需触发任何等待者唤醒逻辑。
-    // w == 0 则表示没有任何 goroutine 在 Wait() 上阻塞，也无需做后续的释放操作。
-    if v &gt; 0 || w == 0 {
-        return
+    <span class="pl-c">// ============ 如果当前计数仍然 &gt; 0，或者当前没有等待者，直接返回 ============</span>
+    <span class="pl-c">// v &gt; 0 表示计数器不为 0，说明还有子任务尚未完成，此时无需触发任何等待者唤醒逻辑。</span>
+    <span class="pl-c">// w == 0 则表示没有任何 goroutine 在 Wait() 上阻塞，也无需做后续的释放操作。</span>
+    <span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">&gt;</span> <span class="pl-c1">0</span> <span class="pl-c1">||</span> <span class="pl-s1">w</span> <span class="pl-c1">==</span> <span class="pl-c1">0</span> {
+        <span class="pl-k">return</span>
     }
 
-    // ============ 下面的逻辑只在 “v == 0 &amp;&amp; w &gt; 0” 时执行 ============
-    // 这种场景：刚好把计数从 1 减到了 0（v == 0），并且此时有多个 Wait() 正在阻塞（w &gt; 0）。
-    // 根据 WaitGroup 的设计，需要一次性唤醒所有的等待者 goroutine。
+    <span class="pl-c">// ============ 下面的逻辑只在 “v == 0 &amp;&amp; w &gt; 0” 时执行 ============</span>
+    <span class="pl-c">// 这种场景：刚好把计数从 1 减到了 0（v == 0），并且此时有多个 Wait() 正在阻塞（w &gt; 0）。</span>
+    <span class="pl-c">// 根据 WaitGroup 的设计，需要一次性唤醒所有的等待者 goroutine。</span>
 
-    // 先做一个小的 sanity check（健全性检查）：
-    // 确保在我们读取到 state 之后，没有其它 concurrent 的 Add/Done 对 wg.state 产生变化。
-    // 如果 wg.state.Load() 不等于刚刚计算得到的 state，就说明有人在此时刻同时修改了状态，
-    // 那就说明 WaitGroup 又被误用（Add 与 Wait 并发），panic 提示用户。
-    if wg.state.Load() != state {
-        panic("sync: WaitGroup misuse: Add called concurrently with Wait")
+    <span class="pl-c">// 先做一个小的 sanity check（健全性检查）：</span>
+    <span class="pl-c">// 确保在我们读取到 state 之后，没有其它 concurrent 的 Add/Done 对 wg.state 产生变化。</span>
+    <span class="pl-c">// 如果 wg.state.Load() 不等于刚刚计算得到的 state，就说明有人在此时刻同时修改了状态，</span>
+    <span class="pl-c">// 那就说明 WaitGroup 又被误用（Add 与 Wait 并发），panic 提示用户。</span>
+    <span class="pl-k">if</span> <span class="pl-s1">wg</span>.<span class="pl-c1">state</span>.<span class="pl-c1">Load</span>() <span class="pl-c1">!=</span> <span class="pl-s1">state</span> {
+        <span class="pl-s1">panic</span>(<span class="pl-s">"sync: WaitGroup misuse: Add called concurrently with Wait"</span>)
     }
 
-    // 因为 state 的高 32 位（计数器）已经是 0，而低 32 位（等待者计数）等于 w &gt; 0。
-    // 既然要唤醒完所有等待者，就要重置整个状态为 0（因为新的计数器 = 0，且等待者将被清空）。
-    wg.state.Store(0)
+    <span class="pl-c">// 因为 state 的高 32 位（计数器）已经是 0，而低 32 位（等待者计数）等于 w &gt; 0。</span>
+    <span class="pl-c">// 既然要唤醒完所有等待者，就要重置整个状态为 0（因为新的计数器 = 0，且等待者将被清空）。</span>
+    <span class="pl-s1">wg</span>.<span class="pl-c1">state</span>.<span class="pl-c1">Store</span>(<span class="pl-c1">0</span>)
 
-    // 释放 semaphore，让所有在 Semacquire 阻塞的 Wait() goroutine 依次被唤醒
-    // 注意：需要循环 w 次释放，因为低 32 位记录了有多少个 goroutine 阻塞在信号量上
-    for ; w != 0; w-- {
-        runtime_Semrelease(&amp;wg.sema, false, 0)
+    <span class="pl-c">// 释放 semaphore，让所有在 Semacquire 阻塞的 Wait() goroutine 依次被唤醒</span>
+    <span class="pl-c">// 注意：需要循环 w 次释放，因为低 32 位记录了有多少个 goroutine 阻塞在信号量上</span>
+    <span class="pl-k">for</span> ; <span class="pl-s1">w</span> <span class="pl-c1">!=</span> <span class="pl-c1">0</span>; <span class="pl-s1">w</span><span class="pl-c1">--</span> {
+        <span class="pl-s1">runtime_Semrelease</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">wg</span>.<span class="pl-c1">sema</span>, <span class="pl-c1">false</span>, <span class="pl-c1">0</span>)
     }
 }
 
-// Done 是 Add(-1) 的简写，用于表示当前一个任务完成，计数器减 1。
-// 通常在每个 goroutine 中使用 defer wg.Done() 来确保在 goroutine 结束时自动调用 Done。
-func (wg *WaitGroup) Done() {
-    wg.Add(-1)
+<span class="pl-c">// Done 是 Add(-1) 的简写，用于表示当前一个任务完成，计数器减 1。</span>
+<span class="pl-c">// 通常在每个 goroutine 中使用 defer wg.Done() 来确保在 goroutine 结束时自动调用 Done。</span>
+<span class="pl-k">func</span> (<span class="pl-s1">wg</span> <span class="pl-c1">*</span><span class="pl-smi">WaitGroup</span>) <span class="pl-c1">Done</span>() {
+    <span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">-</span><span class="pl-c1">1</span>)
 }
-
-
-</code></pre>
+</pre></div>
 <p>方法主要操作的是 state 的计数部分。你可以为计数值增加一个 delta 值，内部通过原子操作把这个值加到计数值上。需要注意的是，这个 delta 也可以是个负数，相当于为计数值减去一个值，Done 方法内部其实就是通过 Add(-1) 实现的。</p>
 <ol>
 <li><strong>高性能与原子操作：</strong></li>
@@ -257,66 +262,64 @@ func (wg *WaitGroup) Done() {
 <li>新的 <code class="notranslate">state0</code> 恰好变为 0，且此时有若干个 goroutine 正在 <code class="notranslate">Wait()</code> 阻塞（<code class="notranslate">state1 &gt; 0</code>），这时就要唤醒它们：调用 <code class="notranslate">runtime_Semrelease(&amp;wg.sema)</code>，让所有阻塞在 <code class="notranslate">sema</code> 上的 goroutine 解除阻塞。</li>
 </ul>
 <h3>Wait方法的实现逻辑</h3>
-<pre lang="go" class="notranslate"><code class="notranslate">// Wait 会阻塞，直到 WaitGroup 的计数器变为 0。
-// 即：所有调用过 Add(+1) 的任务都执行 Done()（Add(-1)）后，Wait 才会返回。
-func (wg *WaitGroup) Wait() {
-	if race.Enabled {
-		// 如果启用了竞态检测器，暂时禁用它（避免在原子操作期间误判）
-		race.Disable()
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// Wait 会阻塞，直到 WaitGroup 的计数器变为 0。</span>
+<span class="pl-c">// 即：所有调用过 Add(+1) 的任务都执行 Done()（Add(-1)）后，Wait 才会返回。</span>
+<span class="pl-k">func</span> (<span class="pl-s1">wg</span> <span class="pl-c1">*</span><span class="pl-smi">WaitGroup</span>) <span class="pl-c1">Wait</span>() {
+	<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+		<span class="pl-c">// 如果启用了竞态检测器，暂时禁用它（避免在原子操作期间误判）</span>
+		<span class="pl-s1">race</span>.<span class="pl-c1">Disable</span>()
 	}
 
-	for {
-		// 读取当前的 state：64位，包含“任务计数器”（高32位）和“等待者数量”（低32位）
-		state := wg.state.Load()
-		v := int32(state &gt;&gt; 32) // 高 32 位：表示当前还有多少个子任务未完成
-		w := uint32(state)      // 低 32 位：表示当前已经有多少个 goroutine 在等待
-		// ============ 如果 v == 0，说明已经没有未完成任务，无需阻塞 ============
-		if v == 0 {
-			// 如果计数器已经为 0，说明不需要等待，立即返回
-			if race.Enabled {
-				// 如果启用了 race 检测器，恢复，并声明 Acquire（获取了 wg 的同步锁）
-				race.Enable()
-				race.Acquire(unsafe.Pointer(wg))
+	<span class="pl-k">for</span> {
+		<span class="pl-c">// 读取当前的 state：64位，包含“任务计数器”（高32位）和“等待者数量”（低32位）</span>
+		<span class="pl-s1">state</span> <span class="pl-c1">:=</span> <span class="pl-s1">wg</span>.<span class="pl-c1">state</span>.<span class="pl-c1">Load</span>()
+		<span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">int32</span>(<span class="pl-s1">state</span> <span class="pl-c1">&gt;&gt;</span> <span class="pl-c1">32</span>) <span class="pl-c">// 高 32 位：表示当前还有多少个子任务未完成</span>
+		<span class="pl-s1">w</span> <span class="pl-c1">:=</span> <span class="pl-s1">uint32</span>(<span class="pl-s1">state</span>)      <span class="pl-c">// 低 32 位：表示当前已经有多少个 goroutine 在等待</span>
+		<span class="pl-c">// ============ 如果 v == 0，说明已经没有未完成任务，无需阻塞 ============</span>
+		<span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">==</span> <span class="pl-c1">0</span> {
+			<span class="pl-c">// 如果计数器已经为 0，说明不需要等待，立即返回</span>
+			<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+				<span class="pl-c">// 如果启用了 race 检测器，恢复，并声明 Acquire（获取了 wg 的同步锁）</span>
+				<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+				<span class="pl-s1">race</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-s1">wg</span>))
 			}
-			return
+			<span class="pl-k">return</span>
 		}
 
-		// 尝试将等待者数量加 1（低 32 位加 1）
-		// 比如原始 state = (v&lt;&lt;32 | w)，现在希望变成 (v&lt;&lt;32 | w+1)
-		if wg.state.CompareAndSwap(state, state+1) {
-			// 加 1 成功（这段是 CAS 原子操作，防止并发 Wait 出错）
+		<span class="pl-c">// 尝试将等待者数量加 1（低 32 位加 1）</span>
+		<span class="pl-c">// 比如原始 state = (v&lt;&lt;32 | w)，现在希望变成 (v&lt;&lt;32 | w+1)</span>
+		<span class="pl-k">if</span> <span class="pl-s1">wg</span>.<span class="pl-c1">state</span>.<span class="pl-c1">CompareAndSwap</span>(<span class="pl-s1">state</span>, <span class="pl-s1">state</span><span class="pl-c1">+</span><span class="pl-c1">1</span>) {
+			<span class="pl-c">// 加 1 成功（这段是 CAS 原子操作，防止并发 Wait 出错）</span>
 
-			if race.Enabled &amp;&amp; w == 0 {
-				// 如果这是第一个等待者（w == 0），且开启了竞态检测
-				// 需要与 Add 中的 race.Read 配对，模拟一次“写入”
-				// 否则 Wait() 与后续 Add() 可能存在未捕捉的并发竞态
+			<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">w</span> <span class="pl-c1">==</span> <span class="pl-c1">0</span> {
+				<span class="pl-c">// 如果这是第一个等待者（w == 0），且开启了竞态检测</span>
+				<span class="pl-c">// 需要与 Add 中的 race.Read 配对，模拟一次“写入”</span>
+				<span class="pl-c">// 否则 Wait() 与后续 Add() 可能存在未捕捉的并发竞态</span>
 
-				// 注意：只有第一个 Wait() 会做 race 写操作，多个并发 Wait() 会互相竞态
-				race.Write(unsafe.Pointer(&amp;wg.sema))
+				<span class="pl-c">// 注意：只有第一个 Wait() 会做 race 写操作，多个并发 Wait() 会互相竞态</span>
+				<span class="pl-s1">race</span>.<span class="pl-c1">Write</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">wg</span>.<span class="pl-c1">sema</span>))
 			}
 
-			// 真正阻塞当前 goroutine，等待被 runtime_Semrelease 唤醒（在 Add 中）
-			runtime_SemacquireWaitGroup(&amp;wg.sema)
+			<span class="pl-c">// 真正阻塞当前 goroutine，等待被 runtime_Semrelease 唤醒（在 Add 中）</span>
+			<span class="pl-s1">runtime_SemacquireWaitGroup</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">wg</span>.<span class="pl-c1">sema</span>)
 
-			// 被唤醒后，如果发现状态不为 0，说明 WaitGroup 被重复使用了
-			// 例如：一个 Wait() 返回后，还没等下一轮 Add() 开始，用户就又调用 Wait()，属于误用
-			if wg.state.Load() != 0 {
-				panic("sync: WaitGroup is reused before previous Wait has returned")
+			<span class="pl-c">// 被唤醒后，如果发现状态不为 0，说明 WaitGroup 被重复使用了</span>
+			<span class="pl-c">// 例如：一个 Wait() 返回后，还没等下一轮 Add() 开始，用户就又调用 Wait()，属于误用</span>
+			<span class="pl-k">if</span> <span class="pl-s1">wg</span>.<span class="pl-c1">state</span>.<span class="pl-c1">Load</span>() <span class="pl-c1">!=</span> <span class="pl-c1">0</span> {
+				<span class="pl-s1">panic</span>(<span class="pl-s">"sync: WaitGroup is reused before previous Wait has returned"</span>)
 			}
 
-			// 恢复 race 检测器状态
-			if race.Enabled {
-				race.Enable()
-				race.Acquire(unsafe.Pointer(wg))
+			<span class="pl-c">// 恢复 race 检测器状态</span>
+			<span class="pl-k">if</span> <span class="pl-s1">race</span>.<span class="pl-c1">Enabled</span> {
+				<span class="pl-s1">race</span>.<span class="pl-c1">Enable</span>()
+				<span class="pl-s1">race</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">unsafe</span>.<span class="pl-c1">Pointer</span>(<span class="pl-s1">wg</span>))
 			}
-			return
+			<span class="pl-k">return</span>
 		}
 
-		// 如果 CompareAndSwap 失败（说明有其它 goroutine 同时修改了 state），重新尝试
+		<span class="pl-c">// 如果 CompareAndSwap 失败（说明有其它 goroutine 同时修改了 state），重新尝试</span>
 	}
-}
-
-</code></pre>
+}</pre></div>
 <p>Wait 方法的实现逻辑是：不断检查 state 的值。如果其中的计数值变为了 0，那么说明所有的任务已完成，调用者不必再等待，直接返回。如果计数值大于 0，说明此时还有任务没完成，那么调用者就变成了等待者，需要加入 waiter 队列，并且阻塞住自己。</p>
 <ol>
 <li><strong>读取计数器</strong>：从 <code class="notranslate">wg.state</code> 中获取当前任务数 <code class="notranslate">v</code> 和等待者数 <code class="notranslate">w</code>。</li>
@@ -368,13 +371,12 @@ func (wg *WaitGroup) Wait() {
 <li>
 <p><strong>确保在启动 Goroutine 之前调用 <code class="notranslate">Add()</code></strong><br>
 如果你在某些并发场景下是先启动 goroutine, 然后再调用 <code class="notranslate">Add()</code>，会导致竞争条件。假设：</p>
-<pre lang="go" class="notranslate"><code class="notranslate">go func() {
-    defer wg.Done() // 这里有 Done()
-    // do something...
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">go</span> <span class="pl-k">func</span>() {
+    <span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>() <span class="pl-c">// 这里有 Done()</span>
+    <span class="pl-c">// do something...</span>
 }()
 
-wg.Add(1) // 可能 goroutine 内的 Done 会先执行，从而导致计数出现负数 panic
-</code></pre>
+<span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>) <span class="pl-c">// 可能 goroutine 内的 Done 会先执行，从而导致计数出现负数 panic</span></pre></div>
 <ul>
 <li><strong>正确示例</strong>：先 <code class="notranslate">wg.Add(1)</code>，再启动 goroutine。</li>
 <li><strong>可见</strong>：<code class="notranslate">Add()</code> 与对应的 <code class="notranslate">Done()</code> 之间存在竞态，必须保证 <code class="notranslate">Add()</code> 始终“先行”或在同一个同步点之前执行。</li>
@@ -386,16 +388,15 @@ wg.Add(1) // 可能 goroutine 内的 Done 会先执行，从而导致计数出�
 <ul>
 <li>
 <p><strong>示例（错误写法）</strong>：</p>
-<pre lang="go" class="notranslate"><code class="notranslate">func f(wg sync.WaitGroup) {
-    // 这里 wg 是拷贝，和调用方的 WaitGroup 不是同一个
-    wg.Add(1)
-    go func() {
-        defer wg.Done()
-        // ...
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> <span class="pl-s1">f</span>(<span class="pl-s1">wg</span> sync.<span class="pl-smi">WaitGroup</span>) {
+    <span class="pl-c">// 这里 wg 是拷贝，和调用方的 WaitGroup 不是同一个</span>
+    <span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>)
+    <span class="pl-k">go</span> <span class="pl-k">func</span>() {
+        <span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>()
+        <span class="pl-c">// ...</span>
     }()
-    // 这里返回后，调用方的 wg 无任何变化
-}
-</code></pre>
+    <span class="pl-c">// 这里返回后，调用方的 wg 无任何变化</span>
+}</pre></div>
 </li>
 <li>
 <p><strong>正确做法</strong>：通过指针传递 <code class="notranslate">*sync.WaitGroup</code>。</p>
@@ -455,7 +456,7 @@ if(""!=""){
 </script></div>
 </body>
 <script>
-var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z'};
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
 var utterancesLoad=0;
 
 let themeSettings={
@@ -528,7 +529,70 @@ function iFrameLoading(){
     }
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
 
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
 
 </script>
 <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
