@@ -887,19 +887,15 @@ EXPLAIN <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 </tbody>
 </table></markdown-accessiblity-table>
 <p><strong>示例：无效的 FULLTEXT 使用</strong></p>
-<pre class="notranslate"><code class="notranslate">sql
-
-
-复制编辑
+<pre class="notranslate"><code class="notranslate">
 SELECT * FROM users WHERE phone LIKE '%6965'; -- ❌ FULLTEXT 无法支持此写法
-sql
 
 
-复制编辑
+
 SELECT * FROM users WHERE phone = '13912345678'; -- ❌ FULLTEXT 也不适合精确匹配
 </code></pre>
 <p>合法用法示例</p>
-<pre class="notranslate"><code class="notranslate">sql复制编辑CREATE TABLE articles (
+<pre class="notranslate"><code class="notranslate">CREATE TABLE articles (
   id INT PRIMARY KEY,
   title VARCHAR(200),
   body TEXT,
@@ -1017,19 +1013,16 @@ WHERE MATCH(title, body) AGAINST ('mysql fulltext search' IN NATURAL LANGUAGE MO
 </table></markdown-accessiblity-table>
 <hr>
 <h5>五、配置参考</h5>
-<pre class="notranslate"><code class="notranslate">ini复制编辑[mysqld]
-# 最小词长度（InnoDB）
-innodb_ft_min_token_size = 2
-# 关闭停用词列表
-innodb_ft_enable_stopword = OFF
-</code></pre>
+<div class="highlight highlight-source-ini"><pre class="notranslate"><span class="pl-c"><span class="pl-c">#</span> 最小词长度（InnoDB）</span>
+<span class="pl-k">innodb_ft_min_token_size</span> = 2
+<span class="pl-c"><span class="pl-c">#</span> 关闭停用词列表</span>
+<span class="pl-k">innodb_ft_enable_stopword</span> = OFF</pre></div>
 <p>执行后需：</p>
-<pre class="notranslate"><code class="notranslate">sql复制编辑-- 删除旧索引
-ALTER TABLE articles DROP INDEX ft_title;
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-c"><span class="pl-c">--</span> 删除旧索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> articles DROP INDEX ft_title;
 
--- 重建索引
-ALTER TABLE articles ADD FULLTEXT(ft_title);
-</code></pre>
+<span class="pl-c"><span class="pl-c">--</span> 重建索引</span>
+<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> articles ADD FULLTEXT(ft_title);</pre></div>
 <p>可见全文索引限制非常多，性能消耗也不小，对于我们上面的查询，我们可以使用一下方法。</p>
 <h4>曲线救国</h4>
 <div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-c"><span class="pl-c">--</span> 添加冗余字段</span>
@@ -1177,10 +1170,9 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 </table></markdown-accessiblity-table>
 <p>终极手段</p>
 <p>MySQL 5.7+ 支持优化器 trace：</p>
-<pre class="notranslate"><code class="notranslate">sql复制编辑SET optimizer_trace="enabled=on",end_markers_in_json=on;
-SELECT * FROM users WHERE phone = '1353526525';
-SELECT * FROM information_schema.optimizer_trace\G
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SET</span> optimizer_trace<span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>enabled=on<span class="pl-pds">"</span></span>,end_markers_in_json<span class="pl-k">=</span><span class="pl-k">on</span>;
+<span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>1353526525<span class="pl-pds">'</span></span>;
+<span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">optimizer_trace</span>\G</pre></div>
 <p>可以在 <code class="notranslate">index_condition_pushdown</code> 和 <code class="notranslate">rowid lookup</code> 等字段中看到是否有回表行为。</p>
 <h2>四、如何避免回表？</h2>
 <markdown-accessiblity-table><table role="table">
@@ -1299,15 +1291,13 @@ SELECT * FROM information_schema.optimizer_trace\G
 <li>
 <p><strong>最左前缀原则：</strong><br>
 覆盖索引也遵循最左匹配规则，字段顺序必须优化。</p>
-<pre class="notranslate"><code class="notranslate">sql复制编辑CREATE INDEX idx_email_username ON users(email, username);
--- 支持：email = ? AND username = ?
--- 不支持：username = ? （email 未使用，无法命中）
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">INDEX</span> <span class="pl-en">idx_email_username</span> <span class="pl-k">ON</span> users(email, username);
+<span class="pl-c"><span class="pl-c">--</span> 支持：email = ? AND username = ?</span>
+<span class="pl-c"><span class="pl-c">--</span> 不支持：username = ? （email 未使用，无法命中）</span></pre></div>
 </li>
 <li>
 <p><strong>将常用的查询字段加入联合索引末尾</strong>：</p>
-<pre class="notranslate"><code class="notranslate">CREATE INDEX idx_email_username_id ON users(email, username, id);
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">INDEX</span> <span class="pl-en">idx_email_username_id</span> <span class="pl-k">ON</span> users(email, username, id);</pre></div>
 </li>
 <li>
 <p><strong>避免过多字段索引：</strong><br>

@@ -314,22 +314,18 @@ WHERE MATCH(phone) AGAINST('6965' IN NATURAL LANGUAGE MODE);
 **示例：无效的 FULLTEXT 使用**
 
 ```
-sql
 
-
-复制编辑
 SELECT * FROM users WHERE phone LIKE '%6965'; -- ❌ FULLTEXT 无法支持此写法
-sql
 
 
-复制编辑
+
 SELECT * FROM users WHERE phone = '13912345678'; -- ❌ FULLTEXT 也不适合精确匹配
 ```
 
 合法用法示例
 
 ```
-sql复制编辑CREATE TABLE articles (
+CREATE TABLE articles (
   id INT PRIMARY KEY,
   title VARCHAR(200),
   body TEXT,
@@ -387,8 +383,8 @@ WHERE MATCH(title, body) AGAINST ('mysql fulltext search' IN NATURAL LANGUAGE MO
 
 #####  五、配置参考
 
-```
-ini复制编辑[mysqld]
+```ini
+
 # 最小词长度（InnoDB）
 innodb_ft_min_token_size = 2
 # 关闭停用词列表
@@ -397,8 +393,8 @@ innodb_ft_enable_stopword = OFF
 
 执行后需：
 
-```
-sql复制编辑-- 删除旧索引
+```sql
+-- 删除旧索引
 ALTER TABLE articles DROP INDEX ft_title;
 
 -- 重建索引
@@ -551,8 +547,8 @@ EXPLAIN SELECT name FROM users WHERE phone = '13912345678';
 
 MySQL 5.7+ 支持优化器 trace：
 
-```
-sql复制编辑SET optimizer_trace="enabled=on",end_markers_in_json=on;
+```sql
+SET optimizer_trace="enabled=on",end_markers_in_json=on;
 SELECT * FROM users WHERE phone = '1353526525';
 SELECT * FROM information_schema.optimizer_trace\G
 ```
@@ -609,15 +605,15 @@ SELECT * FROM information_schema.optimizer_trace\G
 1. **最左前缀原则：**
     覆盖索引也遵循最左匹配规则，字段顺序必须优化。
 
-   ```
-   sql复制编辑CREATE INDEX idx_email_username ON users(email, username);
+   ```sql
+   CREATE INDEX idx_email_username ON users(email, username);
    -- 支持：email = ? AND username = ?
    -- 不支持：username = ? （email 未使用，无法命中）
    ```
 
 2. **将常用的查询字段加入联合索引末尾**：
 
-   ```
+   ```sql
    CREATE INDEX idx_email_username_id ON users(email, username, id);
    ```
 
