@@ -1,0 +1,685 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekVercount.js'></script>
+    <link rel="icon" href="https://avatars.githubusercontent.com/u/59826062?v=4"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="## sync.Pool的概念
+
+`sync.Pool`是Go语言提供的对象池机制，用于存储和复用临时对象，可以显著减少内存分配次数，降低垃圾回收压力
+
+> `sync.Pool` 是一个面向“短生命周期临时对象”的、由 GC 参与管理的对象复用机制，用来显著降低分配次数与 GC 扫描成本。">
+<meta property="og:title" content="第七章 go用sync.Pool减少GC">
+<meta property="og:description" content="## sync.Pool的概念
+
+`sync.Pool`是Go语言提供的对象池机制，用于存储和复用临时对象，可以显著减少内存分配次数，降低垃圾回收压力
+
+> `sync.Pool` 是一个面向“短生命周期临时对象”的、由 GC 参与管理的对象复用机制，用来显著降低分配次数与 GC 扫描成本。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/di-qi-zhang-%20go-yong-sync.Pool-jian-shao-GC.html">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
+<title>第七章 go用sync.Pool减少GC</title>
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">第七章 go用sync.Pool减少GC</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/13" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><h2>sync.Pool的概念</h2>
+<p><code class="notranslate">sync.Pool</code>是Go语言提供的对象池机制，用于存储和复用临时对象，可以显著减少内存分配次数，降低垃圾回收压力</p>
+<blockquote>
+<p><code class="notranslate">sync.Pool</code> 是一个面向“短生命周期临时对象”的、由 GC 参与管理的对象复用机制，用来显著降低分配次数与 GC 扫描成本。</p>
+</blockquote>
+<ul>
+<li>临时对象</li>
+<li>非可靠存储</li>
+<li>GC 可能清空</li>
+<li>目标是 <strong>减少 GC，而不是减少内存</strong></li>
+</ul>
+<h2>主要方法</h2>
+<ul>
+<li>
+<p><strong>Get()</strong>：如果调用这个方法，就会从 Pool取走一个元素，这也就意味着，这个元素会从 Pool 中移除，返回给调用者。不过，除了返回值是正常实例化的元素，Get 方法的返回值还可能会是一个 nil（Pool.New 字段没有设置，又没有空闲元素可以返回），所以你在使用的时候，可能需要判断。</p>
+<blockquote>
+<ol>
+<li>先从当前 P 的 private 取</li>
+<li>再从 shared 取</li>
+<li>再偷其他 P 的 shared</li>
+<li>再从 victim pool 取</li>
+<li>全部没有 → 调用 New()</li>
+</ol>
+</blockquote>
+</li>
+<li>
+<p><strong>Put()</strong>：这个方法用于将一个元素返还给 Pool，Pool 会把这个元素保存到池中，并且可以复用。但如果 Put 一个 nil 值，Pool 就会忽略这个值。</p>
+<blockquote>
+<ol>
+<li>
+<p>放入当前 P 的 local.private</p>
+</li>
+<li>
+<p>若已占用 → 放入 local.shared（无锁队列）</p>
+</li>
+</ol>
+</blockquote>
+</li>
+<li>
+<p><strong>New</strong>：个字段的类型是函数 func() interface{}。当调用 Pool 的 Get 方法从池中获取元素，没有更多的空闲元素可返回时，就会调用这个 New 方法来创建新的元素。如果你没有设置 New 字段，没有更多的空闲元素可返回时，Get 方法将返回 nil，表明当前没有可用的元素。</p>
+</li>
+</ul>
+<h2>基本使用示例</h2>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">var</span> <span class="pl-s1">bufPool</span> <span class="pl-c1">=</span> sync.<span class="pl-smi">Pool</span>{
+    <span class="pl-s1">New</span>: <span class="pl-k">func</span>() <span class="pl-k">interface</span>{} {   <span class="pl-c">// 定义如何创建新对象的函数，当池中没有可用对象时被调用</span>
+        <span class="pl-k">return</span> <span class="pl-s1">new</span>(bytes.<span class="pl-smi">Buffer</span>)
+    },
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">getBuffer</span>() <span class="pl-c1">*</span>bytes.<span class="pl-smi">Buffer</span> {
+    <span class="pl-k">return</span> <span class="pl-s1">bufPool</span>.<span class="pl-c1">Get</span>().(<span class="pl-c1">*</span>bytes.<span class="pl-smi">Buffer</span>)
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">putBuffer</span>(<span class="pl-s1">buf</span> <span class="pl-c1">*</span>bytes.<span class="pl-smi">Buffer</span>) {
+    <span class="pl-s1">buf</span>.<span class="pl-c1">Reset</span>() <span class="pl-c">// 重置缓冲区，避免脏数据</span>
+    <span class="pl-s1">bufPool</span>.<span class="pl-c1">Put</span>(<span class="pl-s1">buf</span>)
+}</pre></div>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+	<span class="pl-s">"fmt"</span>
+	<span class="pl-s">"sync"</span>
+)
+
+<span class="pl-k">type</span> <span class="pl-smi">Student</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">Name</span>  <span class="pl-smi">string</span>
+	<span class="pl-c1">Age</span>   <span class="pl-smi">int</span>
+	<span class="pl-c1">Right</span> <span class="pl-smi">bool</span>
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">s</span> <span class="pl-c1">*</span><span class="pl-smi">Student</span>) <span class="pl-c1">Clear</span>() {    <span class="pl-c">// reset</span>
+	<span class="pl-s1">s</span>.<span class="pl-c1">Name</span> <span class="pl-c1">=</span> <span class="pl-s">""</span>
+	<span class="pl-s1">s</span>.<span class="pl-c1">Age</span> <span class="pl-c1">=</span> <span class="pl-c1">0</span>
+	<span class="pl-s1">s</span>.<span class="pl-c1">Right</span> <span class="pl-c1">=</span> <span class="pl-c1">false</span>
+}
+
+<span class="pl-k">var</span> <span class="pl-s1">studentPool</span> <span class="pl-c1">=</span> sync.<span class="pl-smi">Pool</span>{
+	<span class="pl-s1">New</span>: <span class="pl-k">func</span>() <span class="pl-k">interface</span>{} {
+		<span class="pl-k">return</span> <span class="pl-c1">&amp;</span><span class="pl-smi">Student</span>{}
+	},
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+	<span class="pl-s1">student</span> <span class="pl-c1">:=</span> <span class="pl-s1">studentPool</span>.<span class="pl-c1">Get</span>().(<span class="pl-c1">*</span><span class="pl-smi">Student</span>)
+
+	<span class="pl-c">// 使用student</span>
+	<span class="pl-s1">student</span>.<span class="pl-c1">Name</span> <span class="pl-c1">=</span> <span class="pl-s">"张三"</span>
+	<span class="pl-s1">student</span>.<span class="pl-c1">Age</span> <span class="pl-c1">=</span> <span class="pl-c1">20</span>
+	<span class="pl-s1">student</span>.<span class="pl-c1">Right</span> <span class="pl-c1">=</span> <span class="pl-c1">true</span>
+
+	<span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"学生信息: %+v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">student</span>)
+
+	<span class="pl-c">// 返回给studentPool之前必须清空</span>
+	<span class="pl-s1">student</span>.<span class="pl-c1">Clear</span>()
+	<span class="pl-s1">studentPool</span>.<span class="pl-c1">Put</span>(<span class="pl-s1">student</span>)
+}</pre></div>
+<p>使用sync.Pool必须遵从</p>
+<p><strong>Get 后必须 reset</strong></p>
+<p><strong>Put 前对象必须可复用</strong></p>
+<p><strong>不能假设下一次还能 Get 到</strong></p>
+<h2>底层实现</h2>
+<p>pool的strcut</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">Pool</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">noCopy</span> <span class="pl-smi">noCopy</span>
+
+	<span class="pl-c1">local</span>     unsafe.<span class="pl-smi">Pointer</span> <span class="pl-c">// local fixed-size per-P pool, actual type is [P]poolLocal</span>
+	<span class="pl-c1">localSize</span> <span class="pl-smi">uintptr</span>        <span class="pl-c">// size of the local array</span>
+
+	<span class="pl-c1">victim</span>     unsafe.<span class="pl-smi">Pointer</span> <span class="pl-c">// local from previous cycle</span>
+	<span class="pl-c1">victimSize</span> <span class="pl-smi">uintptr</span>        <span class="pl-c">// size of victims array</span>
+
+	<span class="pl-c">// New optionally specifies a function to generate</span>
+	<span class="pl-c">// a value when Get would otherwise return nil.</span>
+	<span class="pl-c">// It may not be changed concurrently with calls to Get.</span>
+	<span class="pl-c1">New</span> <span class="pl-k">func</span>() <span class="pl-smi">any</span>
+}</pre></div>
+<p>Pool中最重要的两个字段victim和local，因为它们两个主要用来存储空闲的元素。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> <span class="pl-s1">poolCleanup</span>() {
+	<span class="pl-c">// This function is called with the world stopped, at the beginning of a garbage collection.</span>
+	<span class="pl-c">// It must not allocate and probably should not call any runtime functions.</span>
+
+	<span class="pl-c">// Because the world is stopped, no pool user can be in a</span>
+	<span class="pl-c">// pinned section (in effect, this has all Ps pinned).</span>
+
+	<span class="pl-c">// Drop victim caches from all pools.</span>
+	<span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">p</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">oldPools</span> {
+		<span class="pl-s1">p</span>.<span class="pl-c1">victim</span> <span class="pl-c1">=</span> <span class="pl-c1">nil</span>
+		<span class="pl-s1">p</span>.<span class="pl-c1">victimSize</span> <span class="pl-c1">=</span> <span class="pl-c1">0</span>
+	}
+
+	<span class="pl-c">// Move primary cache to victim cache.</span>
+	<span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">p</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">allPools</span> {
+		<span class="pl-s1">p</span>.<span class="pl-c1">victim</span> <span class="pl-c1">=</span> <span class="pl-s1">p</span>.<span class="pl-c1">local</span>
+		<span class="pl-s1">p</span>.<span class="pl-c1">victimSize</span> <span class="pl-c1">=</span> <span class="pl-s1">p</span>.<span class="pl-c1">localSize</span>
+		<span class="pl-s1">p</span>.<span class="pl-c1">local</span> <span class="pl-c1">=</span> <span class="pl-c1">nil</span>
+		<span class="pl-s1">p</span>.<span class="pl-c1">localSize</span> <span class="pl-c1">=</span> <span class="pl-c1">0</span>
+	}
+
+	<span class="pl-c">// The pools with non-empty primary caches now have non-empty</span>
+	<span class="pl-c">// victim caches and no pools have primary caches.</span>
+	<span class="pl-s1">oldPools</span>, <span class="pl-s1">allPools</span> <span class="pl-c1">=</span> <span class="pl-s1">allPools</span>, <span class="pl-c1">nil</span>
+}</pre></div>
+<p>每次垃圾回收的时候，Pool 会把 victim 中的对象移除，然后把 local 的数据给 victim，这样的话，local 就会被清空，而 victim 就像一个垃圾分拣站，里面的东西可能会被当做垃圾丢弃了，但是里面有用的东西也可能被捡回来重新使用。</p>
+<p>victim 中的元素如果被 Get 取走，那么这个元素就很幸运，因为它又“活”过来了。但是，如果这个时候 Get 的并发不是很大，元素没有被 Get 取走，那么就会被移除掉，因为没有别人引用它的话，就会被垃圾回收掉。</p>
+<p>local 字段包含一个 poolLocalInternal 字段，并提供 CPU 缓存对齐，从而避免 false sharing。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">poolLocalInternal</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">private</span> <span class="pl-smi">any</span>       <span class="pl-c">// Can be used only by the respective P.</span>
+	<span class="pl-c1">shared</span>  <span class="pl-smi">poolChain</span> <span class="pl-c">// Local P can pushHead/popHead; any P can popTail.</span>
+}</pre></div>
+<ul>
+<li>private，代表一个缓存的元素，而且只能由相应的一个 P 存取。因为一个 P 同时只能执行一个 goroutine，所以不会有并发的问题。</li>
+<li>shared，可以由任意的 P 访问，但是只有本地的 P 才能 pushHead/popHead，其它 P 可以 <strong>popTail</strong>，相当于只有一个本地的 P 作为生产者（Producer），多个 P 作为消费者（Consumer），它是使用一个 local-free 的 queue 列表实现的。</li>
+</ul>
+<p><code class="notranslate">sync.Pool</code> 的价值在于“减少新对象进入 heap 的次数”，而不是保证对象不被回收。</p>
+<h2>适合使用sync.Pool的场景</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>场景</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">[]byte</code> buffer</td>
+<td>大、频繁</td>
+</tr>
+<tr>
+<td><code class="notranslate">bytes.Buffer</code></td>
+<td>编解码</td>
+</tr>
+<tr>
+<td>HTTP/RPC 中间对象</td>
+<td>生命周期短</td>
+</tr>
+<tr>
+<td>日志拼接</td>
+<td>高频</td>
+</tr>
+<tr>
+<td>protobuf / json 编码</td>
+<td>alloc 热点</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p>不适合的场景</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>场景</th>
+<th>原因</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>DB 连接</td>
+<td>资源不可丢</td>
+</tr>
+<tr>
+<td>文件句柄</td>
+<td>系统资源</td>
+</tr>
+<tr>
+<td>长生命周期对象</td>
+<td>pool 会清</td>
+</tr>
+<tr>
+<td>带状态对象</td>
+<td>脏数据风险</td>
+</tr>
+<tr>
+<td>跨 goroutine 共享状态</td>
+<td>不安全</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2>使用限制</h2>
+<ol>
+<li>不保证命中
+<ul>
+<li>不能用于逻辑依赖</li>
+</ul>
+</li>
+<li>不保证顺序
+<ul>
+<li>不要期望 FIFO / LIFO</li>
+</ul>
+</li>
+<li>对象必须“干净”
+<ul>
+<li>Put 前必须 Reset</li>
+</ul>
+</li>
+<li>不适合大对象滥用</li>
+<li>不适合低频场景</li>
+</ol>
+<blockquote>
+<p>“高频、短命、无状态、可丢失”</p>
+<p>满足这 4 个条件，才值得用 <code class="notranslate">sync.Pool</code>。</p>
+</blockquote>
+<p>对象池完全可以不使用New函数！</p>
+<h2>方式一：无New函数的对象池（Go标准库风格）</h2>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 不使用New函数的对象池</span>
+<span class="pl-k">var</span> (
+    <span class="pl-s1">writerPool</span> sync.<span class="pl-smi">Pool</span>  <span class="pl-c">// 空的池，没有New函数</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">GetBufferedWriter</span>(<span class="pl-s1">w</span> io.<span class="pl-smi">Writer</span>) <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span> {
+    <span class="pl-k">var</span> <span class="pl-s1">bw</span> <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>
+    
+    <span class="pl-c">// 从池中获取，可能返回nil</span>
+    <span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">writerPool</span>.<span class="pl-c1">Get</span>(); <span class="pl-s1">v</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+        <span class="pl-s1">bw</span> <span class="pl-c1">=</span> <span class="pl-s1">v</span>.(<span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>)
+        <span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-s1">w</span>)  <span class="pl-c">// 重置已存在的对象</span>
+    } <span class="pl-k">else</span> {
+        <span class="pl-c">// 池为空时手动创建新对象</span>
+        <span class="pl-s1">bw</span> <span class="pl-c1">=</span> <span class="pl-s1">bufio</span>.<span class="pl-c1">NewWriter</span>(<span class="pl-s1">w</span>)
+    }
+    
+    <span class="pl-k">return</span> <span class="pl-s1">bw</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">PutBufferedWriter</span>(<span class="pl-s1">bw</span> <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>) {
+    <span class="pl-k">if</span> <span class="pl-s1">bw</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+        <span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-c1">nil</span>)  <span class="pl-c">// 清理状态</span>
+        <span class="pl-s1">writerPool</span>.<span class="pl-c1">Put</span>(<span class="pl-s1">bw</span>)  <span class="pl-c">// 放回池中</span>
+    }
+}
+
+<span class="pl-c">// 使用示例</span>
+<span class="pl-k">func</span> <span class="pl-s1">handleRequest</span>(<span class="pl-s1">w</span> io.<span class="pl-smi">Writer</span>) {
+    <span class="pl-s1">writer</span> <span class="pl-c1">:=</span> <span class="pl-s1">GetBufferedWriter</span>(<span class="pl-s1">w</span>)
+    <span class="pl-k">defer</span> <span class="pl-s1">PutBufferedWriter</span>(<span class="pl-s1">writer</span>)
+    
+    <span class="pl-s1">writer</span>.<span class="pl-c1">WriteString</span>(<span class="pl-s">"Hello World"</span>)
+    <span class="pl-s1">writer</span>.<span class="pl-c1">Flush</span>()
+}</pre></div>
+<p>和标准库的这个差不多</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> <span class="pl-s1">getCopyBuf</span>() []<span class="pl-smi">byte</span> {
+	<span class="pl-k">return</span> <span class="pl-s1">copyBufPool</span>.<span class="pl-c1">Get</span>().(<span class="pl-c1">*</span>[<span class="pl-s1">copyBufPoolSize</span>]<span class="pl-smi">byte</span>)[:]
+}
+<span class="pl-k">func</span> <span class="pl-s1">putCopyBuf</span>(<span class="pl-s1">b</span> []<span class="pl-smi">byte</span>) {
+	<span class="pl-k">if</span> <span class="pl-s1">len</span>(<span class="pl-s1">b</span>) <span class="pl-c1">!=</span> <span class="pl-s1">copyBufPoolSize</span> {
+		<span class="pl-s1">panic</span>(<span class="pl-s">"trying to put back buffer of the wrong size in the copyBufPool"</span>)
+	}
+	<span class="pl-s1">copyBufPool</span>.<span class="pl-c1">Put</span>((<span class="pl-c1">*</span>[<span class="pl-s1">copyBufPoolSize</span>]<span class="pl-smi">byte</span>)(<span class="pl-s1">b</span>))
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">bufioWriterPool</span>(<span class="pl-s1">size</span> <span class="pl-smi">int</span>) <span class="pl-c1">*</span>sync.<span class="pl-smi">Pool</span> {
+	<span class="pl-k">switch</span> <span class="pl-s1">size</span> {
+	<span class="pl-k">case</span> <span class="pl-c1">2</span> <span class="pl-c1">&lt;&lt;</span> <span class="pl-c1">10</span>:
+		<span class="pl-k">return</span> <span class="pl-c1">&amp;</span><span class="pl-s1">bufioWriter2kPool</span>
+	<span class="pl-k">case</span> <span class="pl-c1">4</span> <span class="pl-c1">&lt;&lt;</span> <span class="pl-c1">10</span>:
+		<span class="pl-k">return</span> <span class="pl-c1">&amp;</span><span class="pl-s1">bufioWriter4kPool</span>
+	}
+	<span class="pl-k">return</span> <span class="pl-c1">nil</span>
+}
+
+
+
+<span class="pl-c1">...</span>.
+<span class="pl-k">func</span> <span class="pl-s1">newBufioWriterSize</span>(<span class="pl-s1">w</span> io.<span class="pl-smi">Writer</span>, <span class="pl-s1">size</span> <span class="pl-smi">int</span>) <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span> {
+	<span class="pl-s1">pool</span> <span class="pl-c1">:=</span> <span class="pl-s1">bufioWriterPool</span>(<span class="pl-s1">size</span>)
+	<span class="pl-k">if</span> <span class="pl-s1">pool</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+		<span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">pool</span>.<span class="pl-c1">Get</span>(); <span class="pl-s1">v</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+			<span class="pl-s1">bw</span> <span class="pl-c1">:=</span> <span class="pl-s1">v</span>.(<span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>)
+			<span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-s1">w</span>)
+			<span class="pl-k">return</span> <span class="pl-s1">bw</span>
+		}
+	}
+	<span class="pl-k">return</span> <span class="pl-s1">bufio</span>.<span class="pl-c1">NewWriterSize</span>(<span class="pl-s1">w</span>, <span class="pl-s1">size</span>)
+}</pre></div>
+<p>比较类似。</p>
+<h2>方式二：预填充池对象</h2>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 预先创建对象的池</span>
+<span class="pl-k">var</span> <span class="pl-s1">preloadedPool</span> <span class="pl-c1">=</span> sync.<span class="pl-smi">Pool</span>{
+    <span class="pl-c">// 不使用New，而是手动预填充</span>
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">init</span>() {
+    <span class="pl-c">// 启动时预创建一些对象</span>
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">10</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">preloadedPool</span>.<span class="pl-c1">Put</span>(<span class="pl-s1">bufio</span>.<span class="pl-c1">NewWriter</span>(<span class="pl-c1">nil</span>))
+    }
+}
+
+<span class="pl-k">func</span> <span class="pl-s1">GetFromPreloaded</span>(<span class="pl-s1">w</span> io.<span class="pl-smi">Writer</span>) <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span> {
+    <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">preloadedPool</span>.<span class="pl-c1">Get</span>()
+    <span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">==</span> <span class="pl-c1">nil</span> {
+        <span class="pl-c">// 如果预加载的对象用完了，临时创建新的</span>
+        <span class="pl-k">return</span> <span class="pl-s1">bufio</span>.<span class="pl-c1">NewWriter</span>(<span class="pl-s1">w</span>)
+    }
+    
+    <span class="pl-s1">bw</span> <span class="pl-c1">:=</span> <span class="pl-s1">v</span>.(<span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>)
+    <span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-s1">w</span>)
+    <span class="pl-k">return</span> <span class="pl-s1">bw</span>
+}</pre></div>
+<h2>方式三：条件性池化</h2>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 根据使用频率决定是否池化</span>
+<span class="pl-k">type</span> <span class="pl-smi">ConditionalPool</span> <span class="pl-k">struct</span> {
+    <span class="pl-c1">pool</span>    sync.<span class="pl-smi">Pool</span>
+    <span class="pl-c1">counter</span> <span class="pl-smi">int64</span>
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">cp</span> <span class="pl-c1">*</span><span class="pl-smi">ConditionalPool</span>) <span class="pl-c1">Get</span>(<span class="pl-s1">w</span> io.<span class="pl-smi">Writer</span>) <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span> {
+    <span class="pl-c">// 统计使用频率</span>
+    <span class="pl-s1">count</span> <span class="pl-c1">:=</span> <span class="pl-s1">atomic</span>.<span class="pl-c1">AddInt64</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">cp</span>.<span class="pl-c1">counter</span>, <span class="pl-c1">1</span>)
+    
+    <span class="pl-c">// 高频使用才启用池化</span>
+    <span class="pl-k">if</span> <span class="pl-s1">count</span> <span class="pl-c1">&gt;</span> <span class="pl-c1">100</span> {
+        <span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">cp</span>.<span class="pl-c1">pool</span>.<span class="pl-c1">Get</span>(); <span class="pl-s1">v</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+            <span class="pl-s1">bw</span> <span class="pl-c1">:=</span> <span class="pl-s1">v</span>.(<span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>)
+            <span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-s1">w</span>)
+            <span class="pl-k">return</span> <span class="pl-s1">bw</span>
+        }
+    }
+    
+    <span class="pl-c">// 低频直接创建</span>
+    <span class="pl-k">return</span> <span class="pl-s1">bufio</span>.<span class="pl-c1">NewWriter</span>(<span class="pl-s1">w</span>)
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">cp</span> <span class="pl-c1">*</span><span class="pl-smi">ConditionalPool</span>) <span class="pl-c1">Put</span>(<span class="pl-s1">bw</span> <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>) {
+    <span class="pl-k">if</span> <span class="pl-s1">atomic</span>.<span class="pl-c1">LoadInt64</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">cp</span>.<span class="pl-c1">counter</span>) <span class="pl-c1">&gt;</span> <span class="pl-c1">100</span> {
+        <span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-c1">nil</span>)
+        <span class="pl-s1">cp</span>.<span class="pl-c1">pool</span>.<span class="pl-c1">Put</span>(<span class="pl-s1">bw</span>)
+    }
+    <span class="pl-c">// 低频使用直接丢弃，让GC处理</span>
+}</pre></div>
+<h2>方式四：混合策略池</h2>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 结合多种策略的对象池</span>
+<span class="pl-k">type</span> <span class="pl-smi">HybridPool</span> <span class="pl-k">struct</span> {
+    <span class="pl-c1">smallPool</span> sync.<span class="pl-smi">Pool</span>  <span class="pl-c">// 小对象池</span>
+    <span class="pl-c1">largePool</span> sync.<span class="pl-smi">Pool</span>  <span class="pl-c">// 大对象池</span>
+    <span class="pl-c1">useCount</span>  <span class="pl-smi">int64</span>      <span class="pl-c">// 使用统计</span>
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">hp</span> <span class="pl-c1">*</span><span class="pl-smi">HybridPool</span>) <span class="pl-c1">Get</span>(<span class="pl-s1">size</span> <span class="pl-smi">int</span>, <span class="pl-s1">w</span> io.<span class="pl-smi">Writer</span>) <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span> {
+    <span class="pl-s1">atomic</span>.<span class="pl-c1">AddInt64</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">hp</span>.<span class="pl-c1">useCount</span>, <span class="pl-c1">1</span>)
+    
+    <span class="pl-c">// 根据对象大小选择不同的池</span>
+    <span class="pl-k">var</span> <span class="pl-s1">pool</span> <span class="pl-c1">*</span>sync.<span class="pl-smi">Pool</span>
+    <span class="pl-k">if</span> <span class="pl-s1">size</span> <span class="pl-c1">&lt;=</span> <span class="pl-c1">1024</span> {
+        <span class="pl-s1">pool</span> <span class="pl-c1">=</span> <span class="pl-c1">&amp;</span><span class="pl-s1">hp</span>.<span class="pl-c1">smallPool</span>
+    } <span class="pl-k">else</span> {
+        <span class="pl-s1">pool</span> <span class="pl-c1">=</span> <span class="pl-c1">&amp;</span><span class="pl-s1">hp</span>.<span class="pl-c1">largePool</span>
+    }
+    
+    <span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">pool</span>.<span class="pl-c1">Get</span>(); <span class="pl-s1">v</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+        <span class="pl-s1">bw</span> <span class="pl-c1">:=</span> <span class="pl-s1">v</span>.(<span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>)
+        <span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-s1">w</span>)
+        <span class="pl-k">return</span> <span class="pl-s1">bw</span>
+    }
+    
+    <span class="pl-c">// 池为空时创建</span>
+    <span class="pl-k">return</span> <span class="pl-s1">bufio</span>.<span class="pl-c1">NewWriterSize</span>(<span class="pl-s1">w</span>, <span class="pl-s1">size</span>)
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">hp</span> <span class="pl-c1">*</span><span class="pl-smi">HybridPool</span>) <span class="pl-c1">Put</span>(<span class="pl-s1">bw</span> <span class="pl-c1">*</span>bufio.<span class="pl-smi">Writer</span>) {
+    <span class="pl-s1">size</span> <span class="pl-c1">:=</span> <span class="pl-s1">bw</span>.<span class="pl-c1">Available</span>()
+    <span class="pl-k">var</span> <span class="pl-s1">pool</span> <span class="pl-c1">*</span>sync.<span class="pl-smi">Pool</span>
+    
+    <span class="pl-k">if</span> <span class="pl-s1">size</span> <span class="pl-c1">&lt;=</span> <span class="pl-c1">1024</span> {
+        <span class="pl-s1">pool</span> <span class="pl-c1">=</span> <span class="pl-c1">&amp;</span><span class="pl-s1">hp</span>.<span class="pl-c1">smallPool</span>
+    } <span class="pl-k">else</span> {
+        <span class="pl-s1">pool</span> <span class="pl-c1">=</span> <span class="pl-c1">&amp;</span><span class="pl-s1">hp</span>.<span class="pl-c1">largePool</span>
+    }
+    
+    <span class="pl-s1">bw</span>.<span class="pl-c1">Reset</span>(<span class="pl-c1">nil</span>)
+    <span class="pl-s1">pool</span>.<span class="pl-c1">Put</span>(<span class="pl-s1">bw</span>)
+}</pre></div>
+<h2>核心要点总结：</h2>
+<ol>
+<li><strong>New函数是可选的</strong> - <code class="notranslate">sync.Pool</code>完全可以不设置New函数</li>
+<li><strong>手动处理nil情况</strong> - 需要自己检查Get()返回值是否为nil</li>
+<li><strong>灵活的创建策略</strong> - 可以根据业务需求决定何时创建新对象</li>
+<li><strong>更好的控制权</strong> - 不使用New可以获得更精细的资源控制</li>
+</ol>
+<p>这种方式特别适合：</p>
+<ul>
+<li>对象创建成本不高</li>
+<li>需要精确控制对象生命周期</li>
+<li>想要避免不必要的对象预创建</li>
+<li>需要根据运行时条件决定是否池化</li>
+</ul>
+<p>Go标准库HTTP服务器就是采用了这种无New函数的设计，体现了实用主义的设计哲学。</p></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">宏渊的技术博客</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行 "+diffDay+" 天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.disabled=true;
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+<script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
+
+</html>
