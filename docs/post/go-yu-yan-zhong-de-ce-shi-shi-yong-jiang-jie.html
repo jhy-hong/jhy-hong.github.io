@@ -239,7 +239,7 @@ testing.B提供了一系列用于辅助性能测试的方法或成员，如上�
 <meta property="og:url" content="https://jhy-hong.github.io/post/go-yu-yan-zhong-de-ce-shi-shi-yong-jiang-jie.html">
 <meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
 <title>go语言中的测试使用讲解</title>
-
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
 
 
 </head>
@@ -263,7 +263,17 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
     body {padding: 8px;}
     .postTitle{font-size:24px;}
 }
-
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
 </style>
 
 
@@ -312,29 +322,27 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>目录结构</p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/eb5fa6e6-eb15-4f64-83a7-1268bb5b558a"><img width="205" alt="Image" src="https://github.com/user-attachments/assets/eb5fa6e6-eb15-4f64-83a7-1268bb5b558a" style="max-width: 100%;"></a></p>
 <p>源代码文件unit.go：</p>
-<pre lang="go" class="notranslate"><code class="notranslate">package unitTesting
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> unitTesting
 
-func Add(a, b int) int {
-    return a + b
-}
-</code></pre>
+<span class="pl-k">func</span> <span class="pl-s1">Add</span>(<span class="pl-s1">a</span>, <span class="pl-s1">b</span> <span class="pl-smi">int</span>) <span class="pl-smi">int</span> {
+    <span class="pl-k">return</span> <span class="pl-s1">a</span> <span class="pl-c1">+</span> <span class="pl-s1">b</span>
+}</pre></div>
 <p>测试文件 unit_testing.go</p>
-<pre lang="go" class="notranslate"><code class="notranslate">package unitTesting_test
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> unitTesting_test
 
-import (
-    "testing"
-    "unitTesting"
+<span class="pl-k">import</span> (
+    <span class="pl-s">"testing"</span>
+    <span class="pl-s">"unitTesting"</span>
 )
 
-func TestAdd(t *testing.T) {
-    var a, b = 1, 2
-    expected := 3
-    actual := unitTesting.Add(a, b)
-    if actual != expected {
-        t.Errorf("error")
+<span class="pl-k">func</span> <span class="pl-s1">TestAdd</span>(<span class="pl-s1">t</span> <span class="pl-c1">*</span>testing.<span class="pl-smi">T</span>) {
+    <span class="pl-k">var</span> <span class="pl-s1">a</span>, <span class="pl-s1">b</span> <span class="pl-c1">=</span> <span class="pl-c1">1</span>, <span class="pl-c1">2</span>
+    <span class="pl-s1">expected</span> <span class="pl-c1">:=</span> <span class="pl-c1">3</span>
+    <span class="pl-s1">actual</span> <span class="pl-c1">:=</span> <span class="pl-s1">unitTesting</span>.<span class="pl-c1">Add</span>(<span class="pl-s1">a</span>, <span class="pl-s1">b</span>)
+    <span class="pl-k">if</span> <span class="pl-s1">actual</span> <span class="pl-c1">!=</span> <span class="pl-s1">expected</span> {
+        <span class="pl-s1">t</span>.<span class="pl-c1">Errorf</span>(<span class="pl-s">"error"</span>)
     }
-}
-</code></pre>
+}</pre></div>
 <p>测试文件属于unitTesting_test包，测试文件也可以和源文件在同一个包中，但常见的做法是创建一个包专门用于测试，这样<mark>可以使测试文件和源文件隔离</mark>，规则是在原包名加上 <mark>_test</mark></p>
 <p><strong>小结：</strong></p>
 <ul>
@@ -352,46 +360,44 @@ func TestAdd(t *testing.T) {
 <p><em>目录结构</em></p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/168950e5-21e7-44d5-a653-7e89249df538"><img src="https://github.com/user-attachments/assets/168950e5-21e7-44d5-a653-7e89249df538" alt="Image" style="max-width: 100%;"></a></p>
 <p>源代码文件 benchmakr.go</p>
-<pre lang="go" class="notranslate"><code class="notranslate">package benchmarkTest
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> benchmarkTest
 
-// MakeSliceWithoutAlloc 不预分配
-func MakeSliceWithoutAlloc() []int {
-    var newSlice []int
-    for i := 0; i &lt; 100000; i++ {
-        newSlice = append(newSlice, i)
+<span class="pl-c">// MakeSliceWithoutAlloc 不预分配</span>
+<span class="pl-k">func</span> <span class="pl-s1">MakeSliceWithoutAlloc</span>() []<span class="pl-smi">int</span> {
+    <span class="pl-k">var</span> <span class="pl-s1">newSlice</span> []<span class="pl-smi">int</span>
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">100000</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">newSlice</span> <span class="pl-c1">=</span> <span class="pl-s1">append</span>(<span class="pl-s1">newSlice</span>, <span class="pl-s1">i</span>)
     }
-    return newSlice
+    <span class="pl-k">return</span> <span class="pl-s1">newSlice</span>
 }
 
-// MakeSliceWithAlloc 预分配
-func MakeSliceWithAlloc() []int {
-    var newSlice []int
-    newSlice = make([]int, 0, 100000)
-    for i := 0; i &lt; 100000; i++ {
-        newSlice = append(newSlice, i)
+<span class="pl-c">// MakeSliceWithAlloc 预分配</span>
+<span class="pl-k">func</span> <span class="pl-s1">MakeSliceWithAlloc</span>() []<span class="pl-smi">int</span> {
+    <span class="pl-k">var</span> <span class="pl-s1">newSlice</span> []<span class="pl-smi">int</span>
+    <span class="pl-s1">newSlice</span> <span class="pl-c1">=</span> <span class="pl-s1">make</span>([]<span class="pl-smi">int</span>, <span class="pl-c1">0</span>, <span class="pl-c1">100000</span>)
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">100000</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">newSlice</span> <span class="pl-c1">=</span> <span class="pl-s1">append</span>(<span class="pl-s1">newSlice</span>, <span class="pl-s1">i</span>)
     }
-    return newSlice
-}
-</code></pre>
+    <span class="pl-k">return</span> <span class="pl-s1">newSlice</span>
+}</pre></div>
 <p>测试文件benchmark_test.go</p>
-<pre lang="go" class="notranslate"><code class="notranslate">package benchmarkTest_test
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> benchmarkTest_test
 
-import (
-    "benchmarkTest"
-    "testing"
+<span class="pl-k">import</span> (
+    <span class="pl-s">"benchmarkTest"</span>
+    <span class="pl-s">"testing"</span>
 )
 
-func BenchmarkMakeSliceWithoutAlloc(b *testing.B) {
-    for i := 0; i &lt; b.N; i++ {
-        benchmarkTest.MakeSliceWithoutAlloc()
+<span class="pl-k">func</span> <span class="pl-s1">BenchmarkMakeSliceWithoutAlloc</span>(<span class="pl-s1">b</span> <span class="pl-c1">*</span>testing.<span class="pl-smi">B</span>) {
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">b</span>.<span class="pl-c1">N</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">benchmarkTest</span>.<span class="pl-c1">MakeSliceWithoutAlloc</span>()
     }
 }
-func BenchmarkMakeSliceWithAlloc(b *testing.B) {
-    for i := 0; i &lt; b.N; i++ {
-        benchmarkTest.MakeSliceWithAlloc()
+<span class="pl-k">func</span> <span class="pl-s1">BenchmarkMakeSliceWithAlloc</span>(<span class="pl-s1">b</span> <span class="pl-c1">*</span>testing.<span class="pl-smi">B</span>) {
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">b</span>.<span class="pl-c1">N</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">benchmarkTest</span>.<span class="pl-c1">MakeSliceWithAlloc</span>()
     }
-}
-</code></pre>
+}</pre></div>
 <p>性能测试函数的命名规则为BenchmarkXxx，其中Xxx为自定义的标识，需要以大写字母开头，通常为待测函数</p>
 <p>testing.B提供了一系列用于辅助性能测试的方法或成员，如上面的b.N表示循环执行的次数，而N值不用程序员关心，N值是动态调整的，直到可靠的算出程序执行时间后才会停止。具体执行次数会在执行结束后打印出来。</p>
 <p><strong>执行测试</strong></p>
@@ -413,58 +419,56 @@ func BenchmarkMakeSliceWithAlloc(b *testing.B) {
 <p><em>目录结构</em></p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/9b3cd7ae-5b8d-404e-8170-6cd19b033d2d"><img src="https://github.com/user-attachments/assets/9b3cd7ae-5b8d-404e-8170-6cd19b033d2d" alt="Image" style="max-width: 100%;"></a></p>
 <p>源代码文件 example.go</p>
-<pre lang="go" class="notranslate"><code class="notranslate">package exampleTest
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> exampleTest
 
-import "fmt"
+<span class="pl-k">import</span> <span class="pl-s">"fmt"</span>
 
-// 单行输出
-func SayHello() {
-    fmt.Println("Hello World")
+<span class="pl-c">// 单行输出</span>
+<span class="pl-k">func</span> <span class="pl-s1">SayHello</span>() {
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"Hello World"</span>)
 }
 
-// 两行顺序打印
-func SyaGoodbye() {
-    fmt.Println("hello")
-    fmt.Println("Goodbye")
+<span class="pl-c">// 两行顺序打印</span>
+<span class="pl-k">func</span> <span class="pl-s1">SyaGoodbye</span>() {
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"hello"</span>)
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"Goodbye"</span>)
 
 }
 
-// 多行无序打印
-func PrintNames() {
-    students := make(map[int]string, 4)
-    students[1] = "Jim"
-    students[2] = "Tom"
-    students[3] = "Bob"
-    students[4] = "Jerry"
-    for _, s := range students {
-        fmt.Println(s)
+<span class="pl-c">// 多行无序打印</span>
+<span class="pl-k">func</span> <span class="pl-s1">PrintNames</span>() {
+    <span class="pl-s1">students</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">map</span>[<span class="pl-smi">int</span>]<span class="pl-smi">string</span>, <span class="pl-c1">4</span>)
+    <span class="pl-s1">students</span>[<span class="pl-c1">1</span>] <span class="pl-c1">=</span> <span class="pl-s">"Jim"</span>
+    <span class="pl-s1">students</span>[<span class="pl-c1">2</span>] <span class="pl-c1">=</span> <span class="pl-s">"Tom"</span>
+    <span class="pl-s1">students</span>[<span class="pl-c1">3</span>] <span class="pl-c1">=</span> <span class="pl-s">"Bob"</span>
+    <span class="pl-s1">students</span>[<span class="pl-c1">4</span>] <span class="pl-c1">=</span> <span class="pl-s">"Jerry"</span>
+    <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">s</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">students</span> {
+        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">s</span>)
     }
-}
-</code></pre>
+}</pre></div>
 <p>测试文件example_test.go：</p>
-<pre lang="go" class="notranslate"><code class="notranslate">package exampleTest_test
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> exampleTest_test
 
-import "exampleTest"
+<span class="pl-k">import</span> <span class="pl-s">"exampleTest"</span>
 
-func ExampleSayHello() {
-    exampleTest.SayHello()
-    // OutPut: Hello World
+<span class="pl-k">func</span> <span class="pl-s1">ExampleSayHello</span>() {
+    <span class="pl-s1">exampleTest</span>.<span class="pl-c1">SayHello</span>()
+    <span class="pl-c">// OutPut: Hello World</span>
 }
-func ExampleSyaGoodbye() {
-    exampleTest.SyaGoodbye()
-    // OutPut:
-    // hello
-    // Goodbye
+<span class="pl-k">func</span> <span class="pl-s1">ExampleSyaGoodbye</span>() {
+    <span class="pl-s1">exampleTest</span>.<span class="pl-c1">SyaGoodbye</span>()
+    <span class="pl-c">// OutPut:</span>
+    <span class="pl-c">// hello</span>
+    <span class="pl-c">// Goodbye</span>
 }
-func ExamplePrintNames() {
-    exampleTest.PrintNames()
-    // Unordered output:
-    // Jim
-    // Tom
-    // Bob
-    // Jerry
-}
-</code></pre>
+<span class="pl-k">func</span> <span class="pl-s1">ExamplePrintNames</span>() {
+    <span class="pl-s1">exampleTest</span>.<span class="pl-c1">PrintNames</span>()
+    <span class="pl-c">// Unordered output:</span>
+    <span class="pl-c">// Jim</span>
+    <span class="pl-c">// Tom</span>
+    <span class="pl-c">// Bob</span>
+    <span class="pl-c">// Jerry</span>
+}</pre></div>
 <p><strong><mark>小结</mark></strong>：</p>
 <ul>
 <li>
@@ -498,20 +502,19 @@ func ExamplePrintNames() {
 <p>1）-args</p>
 <p>-args 指示 go test 把-args后面的参数带到测试中去，具体测测试函数会根据此参数来控制测试流程</p>
 <p>-args后面可以附带多个参数，所有参数都将以字符串形式传入，每个参数作为一个string，并存放到字符串切片当中。</p>
-<pre lang="go" class="notranslate"><code class="notranslate">func TestArgs(t *testing.T) {
-    if !flag.Parsed() {
-        flag.Parse()
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> <span class="pl-s1">TestArgs</span>(<span class="pl-s1">t</span> <span class="pl-c1">*</span>testing.<span class="pl-smi">T</span>) {
+    <span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">flag</span>.<span class="pl-c1">Parsed</span>() {
+        <span class="pl-s1">flag</span>.<span class="pl-c1">Parse</span>()
     }
-    argList := flag.Args()
-    for _, arg := range argList {
-        if arg == "cloud" {
-            t.Log("Running in cloud.")
-        } else {
-            t.Log("Running in other mode")
+    <span class="pl-s1">argList</span> <span class="pl-c1">:=</span> <span class="pl-s1">flag</span>.<span class="pl-c1">Args</span>()
+    <span class="pl-k">for</span> <span class="pl-s1">_</span>, <span class="pl-s1">arg</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">argList</span> {
+        <span class="pl-k">if</span> <span class="pl-s1">arg</span> <span class="pl-c1">==</span> <span class="pl-s">"cloud"</span> {
+            <span class="pl-s1">t</span>.<span class="pl-c1">Log</span>(<span class="pl-s">"Running in cloud."</span>)
+        } <span class="pl-k">else</span> {
+            <span class="pl-s1">t</span>.<span class="pl-c1">Log</span>(<span class="pl-s">"Running in other mode"</span>)
         }
     }
-}
-</code></pre>
+}</pre></div>
 <p>执行时带入参数：</p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/b1738d2b-22e1-4cfb-9120-9fab40df48e5"><img width="506" alt="Image" src="https://github.com/user-attachments/assets/b1738d2b-22e1-4cfb-9120-9fab40df48e5" style="max-width: 100%;"></a></p>
 <p>2)-json</p>
@@ -599,7 +602,7 @@ if(""!=""){
 </script></div>
 </body>
 <script>
-var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z'};
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
 var utterancesLoad=0;
 
 let themeSettings={
@@ -673,7 +676,70 @@ function iFrameLoading(){
     }
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
 
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
 
 </script>
 <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
