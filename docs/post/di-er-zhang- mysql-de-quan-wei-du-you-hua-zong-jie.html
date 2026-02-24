@@ -25,7 +25,7 @@
 <meta property="og:url" content="https://jhy-hong.github.io/post/di-er-zhang-%20mysql-de-quan-wei-du-you-hua-zong-jie.html">
 <meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
 <title>第二章 mysql的全维度优化总结</title>
-
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
 
 
 </head>
@@ -49,7 +49,17 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
     body {padding: 8px;}
     .postTitle{font-size:24px;}
 }
-
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
 </style>
 
 
@@ -149,10 +159,9 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <hr>
 <h2>四、慢查询分析与调优</h2>
 <h3>1. 开启慢查询日志</h3>
-<pre lang="ini" class="notranslate"><code class="notranslate">slow_query_log = 1
-long_query_time = 1 # 设置为超过1秒的查询记录到日志
-log_queries_not_using_indexes = 1
-</code></pre>
+<div class="highlight highlight-source-ini"><pre class="notranslate"><span class="pl-k">slow_query_log</span> = 1
+<span class="pl-k">long_query_time</span> = 1 <span class="pl-c"><span class="pl-c">#</span> 设置为超过1秒的查询记录到日志</span>
+<span class="pl-k">log_queries_not_using_indexes</span> = 1</pre></div>
 <h3>2. 分析工具</h3>
 <ul>
 <li><code class="notranslate">EXPLAIN</code>：查看 SQL 执行计划。</li>
@@ -201,49 +210,43 @@ log_queries_not_using_indexes = 1
 <ul>
 <li>
 <p><strong>Buffer Pool 的大小</strong>：InnoDB 的 Buffer Pool 用于缓存数据和索引，配置合理的缓存大小是优化 MySQL 性能的关键之一。建议 Buffer Pool 设置为物理内存的 70-80%。</p>
-<pre lang="sql" class="notranslate"><code class="notranslate">innodb_buffer_pool_size = 4G  # 根据内存大小调整
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate">innodb_buffer_pool_size <span class="pl-k">=</span> 4G  <span class="pl-c"><span class="pl-c">#</span> 根据内存大小调整</span></pre></div>
 </li>
 </ul>
 <h3>2. <strong>查询缓存（Query Cache）</strong></h3>
 <ul>
 <li>
 <p><strong>关闭查询缓存</strong>：在 MySQL 5.7 及以后的版本，查询缓存功能逐渐被弃用，因为它在高并发场景下容易成为瓶颈。因此，建议将其关闭。</p>
-<pre lang="sql" class="notranslate"><code class="notranslate">query_cache_type = 0
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate">query_cache_type <span class="pl-k">=</span> <span class="pl-c1">0</span></pre></div>
 </li>
 </ul>
 <h3>3. <strong>线程池优化</strong></h3>
 <ul>
 <li>
 <p><strong>调整连接线程</strong>：对于高并发的业务场景，可以调整 MySQL 的最大连接数（<code class="notranslate">max_connections</code>）和每个连接线程的最大数量。</p>
-<pre lang="sql" class="notranslate"><code class="notranslate">max_connections = 500
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate">max_connections <span class="pl-k">=</span> <span class="pl-c1">500</span></pre></div>
 </li>
 </ul>
 <h3>4. <strong>磁盘 I/O 优化</strong></h3>
 <ul>
 <li>
 <p><strong>调整 innodb_flush_log_at_trx_commit</strong>：<code class="notranslate">innodb_flush_log_at_trx_commit</code> 控制日志何时写入磁盘。设置为 <code class="notranslate">2</code> 时，可以降低磁盘 I/O，提升性能，但会稍微增加数据丢失的风险。</p>
-<pre lang="sql" class="notranslate"><code class="notranslate">innodb_flush_log_at_trx_commit = 2
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate">innodb_flush_log_at_trx_commit <span class="pl-k">=</span> <span class="pl-c1">2</span></pre></div>
 </li>
 </ul>
 <h3>5. <strong>调整日志文件大小</strong></h3>
 <ul>
 <li>
 <p><strong>设置合适的 redo log 大小</strong>：<code class="notranslate">innodb_log_file_size</code> 配置 redo log 文件大小，建议根据写操作的频率和磁盘情况设置适合的大小，过小的 redo log 会频繁触发检查点，影响性能。</p>
-<pre lang="sql" class="notranslate"><code class="notranslate">innodb_log_file_size = 512M
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate">innodb_log_file_size <span class="pl-k">=</span> 512M</pre></div>
 </li>
 </ul>
 <h3>6. <strong>调整连接超时</strong></h3>
 <ul>
 <li>
 <p><strong>避免无效连接长时间占用</strong>：可以设置 MySQL 的连接超时参数，避免连接长时间闲置，造成资源浪费。</p>
-<pre lang="sql" class="notranslate"><code class="notranslate">wait_timeout = 600
-interactive_timeout = 600
-</code></pre>
+<div class="highlight highlight-source-sql"><pre class="notranslate">wait_timeout <span class="pl-k">=</span> <span class="pl-c1">600</span>
+interactive_timeout <span class="pl-k">=</span> <span class="pl-c1">600</span></pre></div>
 </li>
 </ul>
 <h2>八、监控与告警</h2>
@@ -370,161 +373,159 @@ interactive_timeout = 600
 <hr>
 <h2>配置示例</h2>
 <p>以下是一个典型的 <code class="notranslate">my.cnf</code> 配置文件示例：</p>
-<pre lang="ini" class="notranslate"><code class="notranslate">[client]
-port = 3306
-socket = /var/lib/mysql/mysql.sock
-default-character-set = utf8mb4
+<div class="highlight highlight-source-ini"><pre class="notranslate"><span class="pl-en">[client]</span>
+<span class="pl-k">port</span> = 3306
+<span class="pl-k">socket</span> = /var/lib/mysql/mysql.sock
+<span class="pl-k">default-character-set</span> = utf8mb4
 
-[mysqld]
-user = mysql
-port = 3306
-socket = /var/lib/mysql/mysql.sock
-basedir = /usr/local/mysql
-datadir = /var/lib/mysql
-tmpdir = /tmp
+<span class="pl-en">[mysqld]</span>
+<span class="pl-k">user</span> = mysql
+<span class="pl-k">port</span> = 3306
+<span class="pl-k">socket</span> = /var/lib/mysql/mysql.sock
+<span class="pl-k">basedir</span> = /usr/local/mysql
+<span class="pl-k">datadir</span> = /var/lib/mysql
+<span class="pl-k">tmpdir</span> = /tmp
 skip-name-resolve
 
-max_connections = 500
-max_connect_errors = 1000
-wait_timeout = 600
-interactive_timeout = 600
+<span class="pl-k">max_connections</span> = 500
+<span class="pl-k">max_connect_errors</span> = 1000
+<span class="pl-k">wait_timeout</span> = 600
+<span class="pl-k">interactive_timeout</span> = 600
 
-character-set-server = utf8mb4
-collation-server = utf8mb4_general_ci
-init_connect = 'SET NAMES utf8mb4'
+<span class="pl-k">character-set-server</span> = utf8mb4
+<span class="pl-k">collation-server</span> = utf8mb4_general_ci
+<span class="pl-k">init_connect</span> = <span class="pl-s"><span class="pl-pds">'</span>SET NAMES utf8mb4<span class="pl-pds">'</span></span>
 
-log-error = /var/log/mysql/error.log
-slow_query_log = 1
-slow_query_log_file = /var/log/mysql/slow.log
-long_query_time = 2
-log_queries_not_using_indexes = 1
+<span class="pl-k">log-error</span> = /var/log/mysql/error.log
+<span class="pl-k">slow_query_log</span> = 1
+<span class="pl-k">slow_query_log_file</span> = /var/log/mysql/slow.log
+<span class="pl-k">long_query_time</span> = 2
+<span class="pl-k">log_queries_not_using_indexes</span> = 1
 
-key_buffer_size = 64M
-query_cache_size = 0
-tmp_table_size = 64M
-max_heap_table_size = 64M
+<span class="pl-k">key_buffer_size</span> = 64M
+<span class="pl-k">query_cache_size</span> = 0
+<span class="pl-k">tmp_table_size</span> = 64M
+<span class="pl-k">max_heap_table_size</span> = 64M
 
-innodb_buffer_pool_size = 1G
-innodb_log_file_size = 256M
-innodb_log_buffer_size = 64M
-innodb_flush_log_at_trx_commit = 1
-innodb_file_per_table = 1
-innodb_flush_method = O_DIRECT
+<span class="pl-k">innodb_buffer_pool_size</span> = 1G
+<span class="pl-k">innodb_log_file_size</span> = 256M
+<span class="pl-k">innodb_log_buffer_size</span> = 64M
+<span class="pl-k">innodb_flush_log_at_trx_commit</span> = 1
+<span class="pl-k">innodb_file_per_table</span> = 1
+<span class="pl-k">innodb_flush_method</span> = O_DIRECT
 
-server-id = 1
-log-bin = mysql-bin
-binlog_format = ROW
-expire_logs_days = 7
+<span class="pl-k">server-id</span> = 1
+<span class="pl-k">log-bin</span> = mysql-bin
+<span class="pl-k">binlog_format</span> = ROW
+<span class="pl-k">expire_logs_days</span> = 7
 
-skip-networking = 0
-secure-file-priv = /var/lib/mysql-files
-</code></pre>
-<pre lang="ini" class="notranslate"><code class="notranslate">[client]
-# 客户端连接配置
-port = 3306                         # 默认连接端口
-socket = /var/lib/mysql/mysql.sock # 与服务器通信的套接字文件路径
+<span class="pl-k">skip-networking</span> = 0
+<span class="pl-k">secure-file-priv</span> = /var/lib/mysql-files</pre></div>
+<div class="highlight highlight-source-ini"><pre class="notranslate"><span class="pl-en">[client]</span>
+<span class="pl-c"><span class="pl-c">#</span> 客户端连接配置</span>
+<span class="pl-k">port</span> = 3306                         <span class="pl-c"><span class="pl-c">#</span> 默认连接端口</span>
+<span class="pl-k">socket</span> = /var/lib/mysql/mysql.sock <span class="pl-c"><span class="pl-c">#</span> 与服务器通信的套接字文件路径</span>
 
-[mysqld]
-# ========================
-# 基础参数
-# ========================
-port = 3306                          # 服务器监听端口
-user = mysql                         # 运行 MySQL 的系统用户
-basedir = /usr/local/mysql           # MySQL 安装路径（按实际路径设置）
-datadir = /var/lib/mysql             # 数据文件目录
-socket = /var/lib/mysql/mysql.sock   # 套接字文件路径
-pid-file = /var/run/mysqld/mysqld.pid # PID 文件路径
+<span class="pl-en">[mysqld]</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 基础参数</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">port</span> = 3306                          <span class="pl-c"><span class="pl-c">#</span> 服务器监听端口</span>
+<span class="pl-k">user</span> = mysql                         <span class="pl-c"><span class="pl-c">#</span> 运行 MySQL 的系统用户</span>
+<span class="pl-k">basedir</span> = /usr/local/mysql           <span class="pl-c"><span class="pl-c">#</span> MySQL 安装路径（按实际路径设置）</span>
+<span class="pl-k">datadir</span> = /var/lib/mysql             <span class="pl-c"><span class="pl-c">#</span> 数据文件目录</span>
+<span class="pl-k">socket</span> = /var/lib/mysql/mysql.sock   <span class="pl-c"><span class="pl-c">#</span> 套接字文件路径</span>
+<span class="pl-k">pid-file</span> = /var/run/mysqld/mysqld.pid <span class="pl-c"><span class="pl-c">#</span> PID 文件路径</span>
 
-# ========================
-# 网络连接相关
-# ========================
-bind-address = 0.0.0.0               # 监听所有 IP 地址
-max_connections = 1000               # 最大并发连接数
-max_connect_errors = 10000           # 单个 IP 的连接错误上限（防止暴力攻击）
-wait_timeout = 300                   # 空闲连接等待超时（单位秒）
-interactive_timeout = 300            # 交互式连接超时（单位秒）
-skip-name-resolve                    # 禁用 DNS 解析，加快连接速度（需使用 IP 授权）
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 网络连接相关</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">bind-address</span> = 0.0.0.0               <span class="pl-c"><span class="pl-c">#</span> 监听所有 IP 地址</span>
+<span class="pl-k">max_connections</span> = 1000               <span class="pl-c"><span class="pl-c">#</span> 最大并发连接数</span>
+<span class="pl-k">max_connect_errors</span> = 10000           <span class="pl-c"><span class="pl-c">#</span> 单个 IP 的连接错误上限（防止暴力攻击）</span>
+<span class="pl-k">wait_timeout</span> = 300                   <span class="pl-c"><span class="pl-c">#</span> 空闲连接等待超时（单位秒）</span>
+<span class="pl-k">interactive_timeout</span> = 300            <span class="pl-c"><span class="pl-c">#</span> 交互式连接超时（单位秒）</span>
+skip-name-resolve                    <span class="pl-c"><span class="pl-c">#</span> 禁用 DNS 解析，加快连接速度（需使用 IP 授权）</span>
 
-# ========================
-# 字符集设置
-# ========================
-character-set-server = utf8mb4       # 默认字符集（推荐 UTF-8）
-collation-server = utf8mb4_general_ci# 字符集排序规则
-init_connect = 'SET NAMES utf8mb4'   # 客户端连接初始化字符集
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 字符集设置</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">character-set-server</span> = utf8mb4       <span class="pl-c"><span class="pl-c">#</span> 默认字符集（推荐 UTF-8）</span>
+<span class="pl-k">collation-server</span> = utf8mb4_general_ci<span class="pl-c"><span class="pl-c">#</span> 字符集排序规则</span>
+<span class="pl-k">init_connect</span> = <span class="pl-s"><span class="pl-pds">'</span>SET NAMES utf8mb4<span class="pl-pds">'</span></span>   <span class="pl-c"><span class="pl-c">#</span> 客户端连接初始化字符集</span>
 
-# ========================
-# 错误日志与慢查询日志
-# ========================
-log-error = /var/log/mysql/mysql-error.log   # 错误日志文件路径
-slow_query_log = 1                            # 开启慢查询日志
-slow_query_log_file = /var/log/mysql/mysql-slow.log # 慢查询日志路径
-long_query_time = 1                           # 查询超过 1 秒记录为慢查询
-log_queries_not_using_indexes = 0            # 是否记录未用索引的查询（优化期可开启）
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 错误日志与慢查询日志</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">log-error</span> = /var/log/mysql/mysql-error.log   <span class="pl-c"><span class="pl-c">#</span> 错误日志文件路径</span>
+<span class="pl-k">slow_query_log</span> = 1                            <span class="pl-c"><span class="pl-c">#</span> 开启慢查询日志</span>
+<span class="pl-k">slow_query_log_file</span> = /var/log/mysql/mysql-slow.log <span class="pl-c"><span class="pl-c">#</span> 慢查询日志路径</span>
+<span class="pl-k">long_query_time</span> = 1                           <span class="pl-c"><span class="pl-c">#</span> 查询超过 1 秒记录为慢查询</span>
+<span class="pl-k">log_queries_not_using_indexes</span> = 0            <span class="pl-c"><span class="pl-c">#</span> 是否记录未用索引的查询（优化期可开启）</span>
 
-# ========================
-# 缓存与临时表
-# ========================
-query_cache_size = 0                 # 查询缓存大小（已废弃建议为0）
-query_cache_type = 0
-table_open_cache = 4096             # 表缓存大小（提高频繁访问的表命中率）
-table_definition_cache = 4096       # 表定义缓存（影响 INFORMATION_SCHEMA 访问速度）
-open_files_limit = 65535            # 允许打开的最大文件数（需配合系统 ulimit）
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 缓存与临时表</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">query_cache_size</span> = 0                 <span class="pl-c"><span class="pl-c">#</span> 查询缓存大小（已废弃建议为0）</span>
+<span class="pl-k">query_cache_type</span> = 0
+<span class="pl-k">table_open_cache</span> = 4096             <span class="pl-c"><span class="pl-c">#</span> 表缓存大小（提高频繁访问的表命中率）</span>
+<span class="pl-k">table_definition_cache</span> = 4096       <span class="pl-c"><span class="pl-c">#</span> 表定义缓存（影响 INFORMATION_SCHEMA 访问速度）</span>
+<span class="pl-k">open_files_limit</span> = 65535            <span class="pl-c"><span class="pl-c">#</span> 允许打开的最大文件数（需配合系统 ulimit）</span>
 
-# ========================
-# InnoDB 引擎设置
-# ========================
-default-storage-engine = InnoDB     # 默认存储引擎
-innodb_buffer_pool_size = 8G        # InnoDB 缓存池（建议设置为物理内存的 60%~80%）
-innodb_log_file_size = 1G           # redo 日志文件大小
-innodb_log_buffer_size = 64M        # redo 缓冲区大小
-innodb_flush_log_at_trx_commit = 2  # redo 刷盘策略：0（最快）1（最安全）2（折中）
-innodb_file_per_table = 1           # 每张表使用独立的表空间文件
-innodb_flush_method = O_DIRECT      # 使用 O_DIRECT 避免双重缓存
-innodb_io_capacity = 200            # IO 能力指标（SSD 可设大如 1000+）
-innodb_read_io_threads = 4          # 读 IO 线程数
-innodb_write_io_threads = 4         # 写 IO 线程数
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> InnoDB 引擎设置</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">default-storage-engine</span> = InnoDB     <span class="pl-c"><span class="pl-c">#</span> 默认存储引擎</span>
+<span class="pl-k">innodb_buffer_pool_size</span> = 8G        <span class="pl-c"><span class="pl-c">#</span> InnoDB 缓存池（建议设置为物理内存的 60%~80%）</span>
+<span class="pl-k">innodb_log_file_size</span> = 1G           <span class="pl-c"><span class="pl-c">#</span> redo 日志文件大小</span>
+<span class="pl-k">innodb_log_buffer_size</span> = 64M        <span class="pl-c"><span class="pl-c">#</span> redo 缓冲区大小</span>
+<span class="pl-k">innodb_flush_log_at_trx_commit</span> = 2  <span class="pl-c"><span class="pl-c">#</span> redo 刷盘策略：0（最快）1（最安全）2（折中）</span>
+<span class="pl-k">innodb_file_per_table</span> = 1           <span class="pl-c"><span class="pl-c">#</span> 每张表使用独立的表空间文件</span>
+<span class="pl-k">innodb_flush_method</span> = O_DIRECT      <span class="pl-c"><span class="pl-c">#</span> 使用 O_DIRECT 避免双重缓存</span>
+<span class="pl-k">innodb_io_capacity</span> = 200            <span class="pl-c"><span class="pl-c">#</span> IO 能力指标（SSD 可设大如 1000+）</span>
+<span class="pl-k">innodb_read_io_threads</span> = 4          <span class="pl-c"><span class="pl-c">#</span> 读 IO 线程数</span>
+<span class="pl-k">innodb_write_io_threads</span> = 4         <span class="pl-c"><span class="pl-c">#</span> 写 IO 线程数</span>
 
-# ========================
-# Binlog 设置（主从/备份）
-# ========================
-server-id = 1                       # 唯一的服务器 ID（主从复制需要）
-log-bin = /var/log/mysql/mysql-bin  # 开启 binlog 并指定路径
-binlog_format = ROW                # binlog 格式（ROW 支持更精确的复制）
-expire_logs_days = 7               # binlog 保留天数
-sync_binlog = 1                    # binlog 同步策略（1：每次提交同步最安全）
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> Binlog 设置（主从/备份）</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">server-id</span> = 1                       <span class="pl-c"><span class="pl-c">#</span> 唯一的服务器 ID（主从复制需要）</span>
+<span class="pl-k">log-bin</span> = /var/log/mysql/mysql-bin  <span class="pl-c"><span class="pl-c">#</span> 开启 binlog 并指定路径</span>
+<span class="pl-k">binlog_format</span> = ROW                <span class="pl-c"><span class="pl-c">#</span> binlog 格式（ROW 支持更精确的复制）</span>
+<span class="pl-k">expire_logs_days</span> = 7               <span class="pl-c"><span class="pl-c">#</span> binlog 保留天数</span>
+<span class="pl-k">sync_binlog</span> = 1                    <span class="pl-c"><span class="pl-c">#</span> binlog 同步策略（1：每次提交同步最安全）</span>
 
-# ========================
-# GTID 复制（主从复制需用）
-# ========================
-gtid_mode = ON                     # 开启 GTID 模式
-enforce_gtid_consistency = ON      # 强制 GTID 一致性
-log_slave_updates = 1              # 从库记录 relay-log 中的 SQL 到 binlog
-skip_slave_start = 1               # 启动时不自动开启从库复制线程
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> GTID 复制（主从复制需用）</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">gtid_mode</span> = ON                     <span class="pl-c"><span class="pl-c">#</span> 开启 GTID 模式</span>
+<span class="pl-k">enforce_gtid_consistency</span> = ON      <span class="pl-c"><span class="pl-c">#</span> 强制 GTID 一致性</span>
+<span class="pl-k">log_slave_updates</span> = 1              <span class="pl-c"><span class="pl-c">#</span> 从库记录 relay-log 中的 SQL 到 binlog</span>
+<span class="pl-k">skip_slave_start</span> = 1               <span class="pl-c"><span class="pl-c">#</span> 启动时不自动开启从库复制线程</span>
 
-# ========================
-# 安全性
-# ========================
-secure_file_priv = ""              # 限制 `LOAD DATA` 和导出文件路径，留空表示不限制
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 安全性</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">secure_file_priv</span> = <span class="pl-s"><span class="pl-pds">"</span><span class="pl-pds">"</span></span>              <span class="pl-c"><span class="pl-c">#</span> 限制 `LOAD DATA` 和导出文件路径，留空表示不限制</span>
 
-# ========================
-# 性能监控插件（可选）
-# ========================
-performance_schema = ON            # 开启性能模式（内存开销小，建议开启）
-performance_schema_instrument = '%=on'
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 性能监控插件（可选）</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">performance_schema</span> = ON            <span class="pl-c"><span class="pl-c">#</span> 开启性能模式（内存开销小，建议开启）</span>
+<span class="pl-k">performance_schema_instrument</span> = <span class="pl-s"><span class="pl-pds">'</span>%=on<span class="pl-pds">'</span></span>
 
-# ========================
-# 临时表配置
-# ========================
-tmp_table_size = 128M              # 内存临时表最大值
-max_heap_table_size = 128M         # Heap 表最大值（影响内部内存临时表）
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 临时表配置</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-k">tmp_table_size</span> = 128M              <span class="pl-c"><span class="pl-c">#</span> 内存临时表最大值</span>
+<span class="pl-k">max_heap_table_size</span> = 128M         <span class="pl-c"><span class="pl-c">#</span> Heap 表最大值（影响内部内存临时表）</span>
 
-# ========================
-# 开发调试用（生产慎用）
-# ========================
-# general_log = ON
-# general_log_file = /var/log/mysql/mysql-general.log
-
-</code></pre>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> 开发调试用（生产慎用）</span>
+<span class="pl-c"><span class="pl-c">#</span> ========================</span>
+<span class="pl-c"><span class="pl-c">#</span> general_log = ON</span>
+<span class="pl-c"><span class="pl-c">#</span> general_log_file = /var/log/mysql/mysql-general.log</span>
+</pre></div>
 <hr>
 <h2>调整建议</h2>
 <ul>
@@ -558,7 +559,7 @@ if(""!=""){
 </script></div>
 </body>
 <script>
-var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z'};
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
 var utterancesLoad=0;
 
 let themeSettings={
@@ -632,7 +633,70 @@ function iFrameLoading(){
     }
 }
 
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
 
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
 
 </script>
 <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
