@@ -1,0 +1,652 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekVercount.js'></script>
+    <link rel="icon" href="https://avatars.githubusercontent.com/u/59826062?v=4"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="## 信号量是什么
+
+在系统中，会给每一个进程一个信号量，代表每个进程目前的状态。">
+<meta property="og:title" content="go语言中的信号量semaphor">
+<meta property="og:description" content="## 信号量是什么
+
+在系统中，会给每一个进程一个信号量，代表每个进程目前的状态。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/go-yu-yan-zhong-de-xin-hao-liang-semaphor.html">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
+<title>go语言中的信号量semaphor</title>
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">go语言中的信号量semaphor</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/16" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><h2>信号量是什么</h2>
+<p>在系统中，会给每一个进程一个信号量，代表每个进程目前的状态。未得到控制权的进程，会在特定的地方被迫停下来，等待可以继续进行的信号到来。</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>类型</th>
+<th>取值范围</th>
+<th>典型用途</th>
+<th>说明</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>二进制信号量</td>
+<td>0 或 1</td>
+<td>互斥（Mutex）</td>
+<td>等价于互斥锁，但无“持有者”概念（任意线程可 V）</td>
+</tr>
+<tr>
+<td>计数信号量</td>
+<td>≥ 0 的整数</td>
+<td>资源池管理</td>
+<td>值 = 当前可用资源数量（如数据库连接池大小=10）</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2><strong>核心作用</strong></h2>
+<ol>
+<li><strong>互斥（Mutual Exclusion）</strong><br>
+保护临界区（如：<code class="notranslate">P(mutex); 临界区; V(mutex)</code>）。</li>
+<li><strong>进程/线程同步</strong><br>
+协调执行顺序（如生产者-消费者问题中控制缓冲区空/满状态）。</li>
+<li><strong>资源计数管理</strong><br>
+限制并发访问数量（如：最多 5 个线程同时处理任务）。</li>
+</ol>
+<h2><strong>核心实现方式</strong></h2>
+<h3><strong>① 使用带缓冲 Channel（最常用、简洁）</strong></h3>
+<p>适用于简单并发控制（如限流、工作池）。</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"sync"</span>
+    <span class="pl-s">"time"</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">sem</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">chan</span> <span class="pl-k">struct</span>{}, <span class="pl-c1">3</span>) <span class="pl-c">// 容量=3，即最多3个并发</span>
+    <span class="pl-k">var</span> <span class="pl-s1">wg</span> sync.<span class="pl-smi">WaitGroup</span>
+
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">10</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>)
+        <span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">id</span> <span class="pl-smi">int</span>) {
+            <span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>()
+            
+            <span class="pl-s1">sem</span> <span class="pl-c1">&lt;-</span> <span class="pl-k">struct</span>{}{}       <span class="pl-c">//  获取信号量（阻塞直到有空位）</span>
+            <span class="pl-k">defer</span> <span class="pl-k">func</span>() { <span class="pl-c1">&lt;-</span><span class="pl-s1">sem</span> }() <span class="pl-c">//  确保释放（即使 panic）</span>
+
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"Task %d started<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">id</span>)
+            <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"Task %d finished<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">id</span>)
+        }(<span class="pl-s1">i</span>)
+    }
+    <span class="pl-s1">wg</span>.<span class="pl-c1">Wait</span>()
+    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">" All tasks completed"</span>)
+}</pre></div>
+<p><strong>优点</strong>：代码简洁、无需额外依赖<br>
+<strong>注意</strong>：</p>
+<ul>
+<li>用 <code class="notranslate">struct{}{}</code> 节省内存</li>
+<li><strong>必须用 <code class="notranslate">defer</code> 保证释放</strong>，避免 panic 导致泄漏</li>
+<li><strong>切勿关闭该 channel</strong>（会导致 panic 或逻辑错误）</li>
+<li>仅支持固定权重（每个任务占1单位）</li>
+</ul>
+<h3>②<strong>使用</strong> <code class="notranslate">golang.org/x/sync/semaphore</code><strong>（生产推荐 ）</strong></h3>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+	<span class="pl-s">"context"</span>
+	<span class="pl-s">"fmt"</span>
+	<span class="pl-s">"golang.org/x/sync/semaphore"</span>
+	<span class="pl-s">"log"</span>
+	<span class="pl-s">"runtime"</span>
+	<span class="pl-s">"time"</span>
+)
+
+<span class="pl-k">var</span> (
+	<span class="pl-s1">maxWorkers</span> <span class="pl-c1">=</span> <span class="pl-s1">runtime</span>.<span class="pl-c1">GOMAXPROCS</span>(<span class="pl-c1">0</span>)                    <span class="pl-c">// worker数量</span>
+	<span class="pl-s1">sema</span>       <span class="pl-c1">=</span> <span class="pl-s1">semaphore</span>.<span class="pl-c1">NewWeighted</span>(<span class="pl-s1">int64</span>(<span class="pl-s1">maxWorkers</span>)) <span class="pl-c">//信号量</span>
+	<span class="pl-s1">task</span>       <span class="pl-c1">=</span> <span class="pl-s1">make</span>([]<span class="pl-smi">int</span>, <span class="pl-s1">maxWorkers</span><span class="pl-c1">*</span><span class="pl-c1">4</span>)                <span class="pl-c">// 任务数，是worker的四倍</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+	<span class="pl-s1">ctx</span> <span class="pl-c1">:=</span> <span class="pl-s1">context</span>.<span class="pl-c1">Background</span>()
+
+	<span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">task</span> {
+		<span class="pl-c">// 如果没有worker可用，会阻塞在这里，直到某个worker被释放</span>
+		<span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">:=</span> <span class="pl-s1">sema</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">ctx</span>, <span class="pl-c1">1</span>); <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+			<span class="pl-k">break</span>
+		}
+
+		<span class="pl-c">// 启动worker goroutine</span>
+		<span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">i</span> <span class="pl-smi">int</span>) {
+			<span class="pl-k">defer</span> <span class="pl-s1">sema</span>.<span class="pl-c1">Release</span>(<span class="pl-c1">1</span>)
+			<span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-c1">100</span> <span class="pl-c1">*</span> <span class="pl-s1">time</span>.<span class="pl-c1">Millisecond</span>) <span class="pl-c">// 模拟一个耗时操作</span>
+			<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"当前协程数:"</span>, <span class="pl-s1">runtime</span>.<span class="pl-c1">NumGoroutine</span>())
+			<span class="pl-s1">task</span>[<span class="pl-s1">i</span>] <span class="pl-c1">=</span> <span class="pl-s1">i</span> <span class="pl-c1">+</span> <span class="pl-c1">1</span>
+		}(<span class="pl-s1">i</span>)
+	}
+
+	<span class="pl-c">// 请求所有的worker,这样能确保前面的worker都执行完</span>
+	<span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">:=</span> <span class="pl-s1">sema</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">ctx</span>, <span class="pl-s1">int64</span>(<span class="pl-s1">maxWorkers</span>)); <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+		<span class="pl-s1">log</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"获取所有的worker失败: %v"</span>, <span class="pl-s1">err</span>)
+	}
+
+	<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"结束后协程数:"</span>, <span class="pl-s1">runtime</span>.<span class="pl-c1">NumGoroutine</span>())
+	<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">task</span>)
+}</pre></div>
+<p>或</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+	<span class="pl-s">"context"</span>
+	<span class="pl-s">"fmt"</span>
+	<span class="pl-s">"golang.org/x/sync/semaphore"</span>
+	<span class="pl-s">"runtime"</span>
+	<span class="pl-s">"sync"</span>
+	<span class="pl-s">"time"</span>
+)
+
+<span class="pl-k">var</span> (
+	<span class="pl-s1">maxWorkers1</span> <span class="pl-c1">=</span> <span class="pl-s1">runtime</span>.<span class="pl-c1">GOMAXPROCS</span>(<span class="pl-c1">0</span>)                     <span class="pl-c">// worker数量</span>
+	<span class="pl-s1">sema1</span>       <span class="pl-c1">=</span> <span class="pl-s1">semaphore</span>.<span class="pl-c1">NewWeighted</span>(<span class="pl-s1">int64</span>(<span class="pl-s1">maxWorkers1</span>)) <span class="pl-c">//信号量</span>
+	<span class="pl-s1">task1</span>       <span class="pl-c1">=</span> <span class="pl-s1">make</span>([]<span class="pl-smi">int</span>, <span class="pl-s1">maxWorkers1</span><span class="pl-c1">*</span><span class="pl-c1">4</span>)                <span class="pl-c">// 任务数，是worker的四倍</span>
+	<span class="pl-s1">wg</span>          sync.<span class="pl-smi">WaitGroup</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+	<span class="pl-s1">ctx</span> <span class="pl-c1">:=</span> <span class="pl-s1">context</span>.<span class="pl-c1">Background</span>()
+
+	<span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">task1</span> {
+		<span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>)
+		<span class="pl-c">// 如果没有worker可用，会阻塞在这里，直到某个worker被释放</span>
+		<span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">:=</span> <span class="pl-s1">sema1</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">ctx</span>, <span class="pl-c1">1</span>); <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+			<span class="pl-k">break</span>
+		}
+
+		<span class="pl-c">// 启动worker goroutine</span>
+		<span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">i</span> <span class="pl-smi">int</span>) {
+			<span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>()
+			<span class="pl-k">defer</span> <span class="pl-s1">sema1</span>.<span class="pl-c1">Release</span>(<span class="pl-c1">1</span>)
+			<span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-c1">100</span> <span class="pl-c1">*</span> <span class="pl-s1">time</span>.<span class="pl-c1">Millisecond</span>) <span class="pl-c">// 模拟一个耗时操作</span>
+			<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"当前协程数:"</span>, <span class="pl-s1">runtime</span>.<span class="pl-c1">NumGoroutine</span>())
+			<span class="pl-s1">task1</span>[<span class="pl-s1">i</span>] <span class="pl-c1">=</span> <span class="pl-s1">i</span> <span class="pl-c1">+</span> <span class="pl-c1">1</span>
+		}(<span class="pl-s1">i</span>)
+	}
+
+	<span class="pl-c">// 请求所有的worker,这样能确保前面的worker都执行完</span>
+	<span class="pl-c">//if err := sema1.Acquire(ctx, int64(maxWorkers)); err != nil {</span>
+	<span class="pl-c">//	log.Printf("获取所有的worker失败: %v", err)</span>
+	<span class="pl-c">//}</span>
+	<span class="pl-s1">wg</span>.<span class="pl-c1">Wait</span>()
+
+	<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"结束后协程数:"</span>, <span class="pl-s1">runtime</span>.<span class="pl-c1">NumGoroutine</span>())
+	<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">task1</span>)
+}</pre></div>
+<p>不同之处在于</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">:=</span> <span class="pl-s1">sema</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">ctx</span>, <span class="pl-s1">int64</span>(<span class="pl-s1">maxWorkers</span>)); <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+    <span class="pl-s1">log</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"获取所有的worker失败: %v"</span>, <span class="pl-s1">err</span>)
+}</pre></div>
+<p>这一步非常关键。</p>
+<p>它的语义是：</p>
+<blockquote>
+<p>一次性申请全部 worker 资源</p>
+</blockquote>
+<p>当它能成功 Acquire maxWorkers 时：</p>
+<p>说明：</p>
+<blockquote>
+<p>当前没有任何 goroutine <strong>持有资源</strong></p>
+</blockquote>
+<p>也就是说：</p>
+<blockquote>
+<p>所有 worker 都执行完了</p>
+</blockquote>
+<p>这相当于：</p>
+<p>WaitGroup.Wait() 的效果</p>
+<h4>这个包对外的api</h4>
+<ol>
+<li>**Acquire 方法：**可以一次获取多个资源，如果没有足够多的资源，调用者就会被阻塞。它的第一个参数是 Context，这就意味着，你可以通过 Context 增加超时或者 cancel 的机制。如果是正常获取了资源，就返回 nil；否则，就返回 ctx.Err()，信号量不改变。</li>
+<li>**Release 方法：**可以将 n 个资源释放，返还给信号量。</li>
+<li>**TryAcquire 方法：**尝试获取 n 个资源，但是它不会阻塞，要么成功获取 n 个资源，返回 true，要么一个也不获取，返回 false。</li>
+</ol>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+    <span class="pl-s">"context"</span>
+    <span class="pl-s">"fmt"</span>
+    <span class="pl-s">"sync"</span>
+    <span class="pl-s">"time"</span>
+    <span class="pl-s">"golang.org/x/sync/semaphore"</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+    <span class="pl-s1">sem</span> <span class="pl-c1">:=</span> <span class="pl-s1">semaphore</span>.<span class="pl-c1">NewWeighted</span>(<span class="pl-c1">3</span>) <span class="pl-c">// 总资源量=3</span>
+    <span class="pl-k">var</span> <span class="pl-s1">wg</span> sync.<span class="pl-smi">WaitGroup</span>
+
+    <span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">10</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+        <span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>)
+        <span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">id</span> <span class="pl-smi">int</span>) {
+            <span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>()
+            
+            <span class="pl-s1">ctx</span>, <span class="pl-s1">cancel</span> <span class="pl-c1">:=</span> <span class="pl-s1">context</span>.<span class="pl-c1">WithTimeout</span>(<span class="pl-s1">context</span>.<span class="pl-c1">Background</span>(), <span class="pl-c1">2</span><span class="pl-c1">*</span><span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+            <span class="pl-k">defer</span> <span class="pl-s1">cancel</span>()
+            
+            <span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">:=</span> <span class="pl-s1">sem</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">ctx</span>, <span class="pl-c1">1</span>); <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> { <span class="pl-c">// 可指定权重（如2）</span>
+                <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"Task %d timeout: %v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">id</span>, <span class="pl-s1">err</span>)
+                <span class="pl-k">return</span>
+            }
+            <span class="pl-k">defer</span> <span class="pl-s1">sem</span>.<span class="pl-c1">Release</span>(<span class="pl-c1">1</span>) <span class="pl-c">//  自动释放</span>
+
+            <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"Task %d running<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">id</span>)
+            <span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+        }(<span class="pl-s1">i</span>)
+    }
+    <span class="pl-s1">wg</span>.<span class="pl-c1">Wait</span>()
+}</pre></div>
+<p><strong>优势</strong>：</p>
+<ul>
+<li>支持动态权重（<code class="notranslate">Acquire(ctx, weight)</code>）</li>
+<li>与 Context 集成，支持超时/取消</li>
+<li>内部实现健壮，避免常见 channel 陷阱</li>
+<li>适合连接池、资源配额等场景</li>
+</ul>
+<h2>channel vs semaphor</h2>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>场景</th>
+<th>推荐方案</th>
+<th>理由</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>简单并发控制（如限流10个goroutine）</td>
+<td>带缓冲 Channel</td>
+<td>代码极简，无依赖</td>
+</tr>
+<tr>
+<td>需要超时/取消/权重控制</td>
+<td><code class="notranslate">golang.org/x/sync/semaphore</code></td>
+<td>功能完备，安全可靠</td>
+</tr>
+<tr>
+<td>仅需互斥（二进制信号量）</td>
+<td><code class="notranslate">sync.Mutex</code></td>
+<td>语义清晰，性能最优</td>
+</tr>
+<tr>
+<td>教学/原理理解</td>
+<td>手动实现</td>
+<td>不推荐生产使用</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h2><strong>重要注意事项</strong></h2>
+<ol>
+<li><strong>资源泄漏防护</strong>：所有获取操作必须配对释放，<strong>务必用 <code class="notranslate">defer</code></strong>。</li>
+<li><strong>Channel 陷阱</strong>：勿关闭信号量 channel；避免在循环中误用循环变量。</li>
+<li><strong>panic 安全</strong>：Channel 方案中，若获取后 panic，defer 仍会释放；但若卡在“获取”阶段（channel 满），需外部保障。</li>
+<li>与 Mutex 区别：
+<ul>
+<li>Mutex：仅1个持有者（二进制信号量），用于临界区保护</li>
+<li>Semaphore：允许多个持有者（计数信号量），用于资源池/并发数控制</li>
+</ul>
+</li>
+</ol>
+<p>在 Go 的 <code class="notranslate">golang.org/x/sync/semaphore</code> 包中，<code class="notranslate">sem.Acquire(ctx, weight)</code> 的 <strong><code class="notranslate">weight</code>（权重）参数表示本次操作需占用的信号量单位数</strong>。设置为 <code class="notranslate">1</code> 与 <code class="notranslate">2</code> 的区别、动态权重的含义与作用如下：</p>
+<hr>
+<h2>核心区别：<code class="notranslate">Acquire(ctx, 1)</code> vs <code class="notranslate">Acquire(ctx, 2)</code></h2>
+<p>假设信号量总容量为 <code class="notranslate">5</code>（<code class="notranslate">sem := semaphore.NewWeighted(5)</code>）：</p>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>操作</th>
+<th>效果</th>
+<th>剩余容量</th>
+<th>并发能力</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><code class="notranslate">Acquire(ctx, 1)</code></td>
+<td>占用 1 单位</td>
+<td>4</td>
+<td>最多 5 个任务并发</td>
+</tr>
+<tr>
+<td><code class="notranslate">Acquire(ctx, 2)</code></td>
+<td>占用 2 单位</td>
+<td>3</td>
+<td>最多 2 个“大任务”并发（2×2=4），剩余 1 单位可被小任务使用</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<p><strong>关键</strong>：</p>
+<ul>
+<li>权重是<strong>资源消耗的度量单位</strong>，非“优先级”</li>
+<li>释放时必须 <code class="notranslate">Release(2)</code>（与获取权重严格匹配），否则导致计数错误（资源泄漏/溢出）</li>
+</ul>
+<hr>
+<h2>动态权重：含义与作用</h2>
+<h3>含义</h3>
+<ul>
+<li>
+<p><strong>运行时动态决定</strong>每次 <code class="notranslate">Acquire</code> 所需资源量（非固定为 1）</p>
+</li>
+<li>
+<p>权重由业务逻辑计算得出，例如：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">weight</span> <span class="pl-c1">:=</span> <span class="pl-k">func</span>(<span class="pl-s1">task</span> <span class="pl-smi">Task</span>) <span class="pl-smi">int64</span> {
+    <span class="pl-k">if</span> <span class="pl-s1">task</span>.<span class="pl-c1">Size</span> <span class="pl-c1">&gt;</span> <span class="pl-c1">100</span><span class="pl-c1">*</span><span class="pl-s1">MB</span> { <span class="pl-k">return</span> <span class="pl-c1">3</span> } <span class="pl-c">// 大文件需更多资源</span>
+    <span class="pl-k">if</span> <span class="pl-s1">task</span>.<span class="pl-c1">Size</span> <span class="pl-c1">&gt;</span> <span class="pl-c1">10</span><span class="pl-c1">*</span><span class="pl-s1">MB</span>  { <span class="pl-k">return</span> <span class="pl-c1">2</span> }
+    <span class="pl-k">return</span> <span class="pl-c1">1</span>
+}(<span class="pl-s1">task</span>)
+<span class="pl-s1">sem</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">ctx</span>, <span class="pl-s1">weight</span>)</pre></div>
+</li>
+</ul>
+<h3>核心作用</h3>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>场景</th>
+<th>价值</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td><strong>异构任务调度</strong></td>
+<td>大任务（视频转码）占 3 单位，小任务（文本处理）占 1 单位，避免“小任务被大任务饿死”或“大任务无法启动”</td>
+</tr>
+<tr>
+<td><strong>资源精准配额</strong></td>
+<td>数据库连接池：普通查询占 1 连接，分布式事务占 3 连接</td>
+</tr>
+<tr>
+<td><strong>防资源碎片优化</strong></td>
+<td>合理设计权重策略（如总容量设为权重公倍数），提升资源利用率</td>
+</tr>
+<tr>
+<td><strong>弹性限流</strong></td>
+<td>高峰期动态降低单任务权重，提升系统吞吐</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<hr>
+<h2>关键注意事项</h2>
+<ol>
+<li><strong>严格匹配释放</strong><br>
+<code class="notranslate">Acquire(ctx, 3)</code> → 必须 <code class="notranslate">Release(3)</code>，否则信号量计数永久错误（严重 Bug！）</li>
+<li><strong>权重 ≤ 总容量</strong><br>
+若 <code class="notranslate">weight &gt; sem.total</code>，<code class="notranslate">Acquire</code> 会永久阻塞（除非 Context 超时），需业务层校验</li>
+<li><strong>避免死锁风险</strong><br>
+多任务以不同顺序申请不同权重资源时（如 A 占 2 等 1，B 占 1 等 2），可能死锁。需设计获取顺序或使用超时</li>
+<li><strong>公平性保障</strong><br>
+该包实现为 <strong>FIFO 等待队列</strong>（文档明确说明 <em>fair</em>），避免小权重任务长期饥饿</li>
+<li><strong>资源碎片问题</strong><br>
+例：总容量 5，已占 3+1=4，剩余 1 单位 → 无法满足需 2 单位的新任务。需结合业务设计权重策略（如容量设为常用权重的公倍数）</li>
+</ol>
+<hr>
+<h2>实际场景示例</h2>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 视频处理服务：根据分辨率动态分配资源</span>
+<span class="pl-k">func</span> <span class="pl-s1">processVideo</span>(<span class="pl-s1">ctx</span> context.<span class="pl-smi">Context</span>, <span class="pl-s1">sem</span> <span class="pl-c1">*</span>semaphore.<span class="pl-smi">Weighted</span>, <span class="pl-s1">resolution</span> <span class="pl-smi">string</span>) <span class="pl-smi">error</span> {
+    <span class="pl-s1">weight</span> <span class="pl-c1">:=</span> <span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int64</span>{<span class="pl-s">"4K"</span>: <span class="pl-c1">3</span>, <span class="pl-s">"1080p"</span>: <span class="pl-c1">2</span>, <span class="pl-s">"720p"</span>: <span class="pl-c1">1</span>}[<span class="pl-s1">resolution</span>]
+    <span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">:=</span> <span class="pl-s1">sem</span>.<span class="pl-c1">Acquire</span>(<span class="pl-s1">ctx</span>, <span class="pl-s1">weight</span>); <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+        <span class="pl-k">return</span> <span class="pl-s1">fmt</span>.<span class="pl-c1">Errorf</span>(<span class="pl-s">"资源不足: %w"</span>, <span class="pl-s1">err</span>)
+    }
+    <span class="pl-k">defer</span> <span class="pl-s1">sem</span>.<span class="pl-c1">Release</span>(<span class="pl-s1">weight</span>) <span class="pl-c">// 严格匹配</span>
+    
+    <span class="pl-c">// 处理视频...</span>
+    <span class="pl-k">return</span> <span class="pl-c1">nil</span>
+}
+<span class="pl-c">// 总容量=5 时：可同时处理 1个4K + 1个1080p，或 5个720p</span></pre></div>
+<hr>
+<h2>总结</h2>
+<ul>
+<li><strong><code class="notranslate">weight=1</code> vs <code class="notranslate">2</code></strong>：本质是“单次操作消耗的资源单位数不同”，直接影响并发组合与系统吞吐</li>
+<li><strong>动态权重价值</strong>：将信号量从“固定槽位模型”升级为 <strong>“弹性资源配额模型”</strong>，使并发控制更贴合真实业务需求</li>
+<li><strong>使用铁律</strong>：
+<ul>
+<li>获取与释放权重严格一致</li>
+<li>权重值需业务校验（≤总容量）</li>
+<li>结合 Context 超时避免永久阻塞</li>
+</ul>
+</li>
+</ul>
+<p>合理运用动态权重，可显著提升资源利用率与系统鲁棒性，是高阶并发设计的关键技巧</p></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">宏渊的技术博客</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行 "+diffDay+" 天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.disabled=true;
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+<script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
+
+</html>
