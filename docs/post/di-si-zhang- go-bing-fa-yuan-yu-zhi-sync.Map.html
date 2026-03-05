@@ -139,7 +139,7 @@ n := len(m) // 键值对数量
 <meta property="og:url" content="https://jhy-hong.github.io/post/di-si-zhang-%20go-bing-fa-yuan-yu-zhi-sync.Map.html">
 <meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
 <title>第四章 go并发原语之sync.Map</title>
-<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
 
 
 </head>
@@ -163,17 +163,7 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
     body {padding: 8px;}
     .postTitle{font-size:24px;}
 }
-.copy-feedback {
-    display: none;
-    position: absolute;
-    top: 10px;
-    right: 50px;
-    color: var(--color-fg-on-emphasis);
-    background-color: var(--color-fg-muted);
-    border-radius: 3px;
-    padding: 5px 8px;
-    font-size: 12px;
-}
+
 </style>
 
 
@@ -209,41 +199,45 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <ol>
 <li><strong>声明与初始化</strong></li>
 </ol>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 声明一个未初始化的map（nil）</span>
-<span class="pl-k">var</span> <span class="pl-s1">m1</span> <span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>
+<pre lang="go" class="notranslate"><code class="notranslate">// 声明一个未初始化的map（nil）
+var m1 map[string]int
 
-<span class="pl-c">// 使用make初始化</span>
-<span class="pl-s1">m2</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>) <span class="pl-c">// 空map</span>
-<span class="pl-s1">m3</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>, <span class="pl-c1">10</span>) <span class="pl-c">// 指定初始容量</span>
+// 使用make初始化
+m2 := make(map[string]int) // 空map
+m3 := make(map[string]int, 10) // 指定初始容量
 
-<span class="pl-c">// 字面量初始化</span>
-<span class="pl-s1">m4</span> <span class="pl-c1">:=</span> <span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>{
-    <span class="pl-s">"apple"</span>:  <span class="pl-c1">5</span>,
-    <span class="pl-s">"banana"</span>: <span class="pl-c1">3</span>,
-}</pre></div>
+// 字面量初始化
+m4 := map[string]int{
+    "apple":  5,
+    "banana": 3,
+}
+</code></pre>
 <ol start="2">
 <li><strong>操作键值对</strong></li>
 </ol>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 添加/修改</span>
-<span class="pl-s1">m</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>)
-<span class="pl-s1">m</span>[<span class="pl-s">"apple"</span>] <span class="pl-c1">=</span> <span class="pl-c1">10</span>
+<pre lang="go" class="notranslate"><code class="notranslate">// 添加/修改
+m := make(map[string]int)
+m["apple"] = 10
 
-<span class="pl-c">// 获取值</span>
-<span class="pl-s1">value</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>[<span class="pl-s">"apple"</span>]   <span class="pl-c">// 10</span>
-<span class="pl-s1">v</span>, <span class="pl-s1">exists</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>[<span class="pl-s">"pear"</span>] <span class="pl-c">// v=0, exists=false</span>
+// 获取值
+value := m["apple"]   // 10
+v, exists := m["pear"] // v=0, exists=false
 
-<span class="pl-c">// 删除键</span>
-<span class="pl-s1">delete</span>(<span class="pl-s1">m</span>, <span class="pl-s">"apple"</span>)</pre></div>
+// 删除键
+delete(m, "apple")
+</code></pre>
 <ol start="3">
 <li><strong>遍历map</strong></li>
 </ol>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">for</span> <span class="pl-s1">key</span>, <span class="pl-s1">value</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">m</span> {
-    <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">key</span>, <span class="pl-s1">value</span>) <span class="pl-c">// 顺序随机</span>
-}</pre></div>
+<pre lang="go" class="notranslate"><code class="notranslate">for key, value := range m {
+    fmt.Println(key, value) // 顺序随机
+}
+</code></pre>
 <ol start="4">
 <li><strong>获取长度</strong></li>
 </ol>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">n</span> <span class="pl-c1">:=</span> <span class="pl-s1">len</span>(<span class="pl-s1">m</span>) <span class="pl-c">// 键值对数量</span></pre></div>
+<pre lang="go" class="notranslate"><code class="notranslate">n := len(m) // 键值对数量
+</code></pre>
 <hr>
 <h3><strong>注意事项</strong></h3>
 <ol>
@@ -252,8 +246,9 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <ul>
 <li>
 <p>nil map无法写入：对<code class="notranslate">nil</code>map赋值会导致<code class="notranslate">panic</code></p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">var</span> <span class="pl-s1">m</span> <span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>
-<span class="pl-s1">m</span>[<span class="pl-s">"key"</span>] <span class="pl-c1">=</span> <span class="pl-c1">1</span> <span class="pl-c">// panic: assignment to nil map</span></pre></div>
+<pre lang="go" class="notranslate"><code class="notranslate">var m map[string]int
+m["key"] = 1 // panic: assignment to nil map
+</code></pre>
 </li>
 <li>
 <p><strong>解决方案</strong>：用<code class="notranslate">make</code>或字面量初始化。</p>
@@ -265,11 +260,12 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <ul>
 <li>
 <p>使用双返回值模式避免零值混淆：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">if</span> <span class="pl-s1">v</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>[<span class="pl-s">"key"</span>]; <span class="pl-s1">ok</span> {
-    <span class="pl-c">// 键存在，v是对应值</span>
-} <span class="pl-k">else</span> {
-    <span class="pl-c">// 键不存在</span>
-}</pre></div>
+<pre lang="go" class="notranslate"><code class="notranslate">if v, ok := m["key"]; ok {
+    // 键存在，v是对应值
+} else {
+    // 键不存在
+}
+</code></pre>
 </li>
 </ul>
 <ol start="3">
@@ -278,10 +274,11 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <ul>
 <li>
 <p>赋值或传参时传递引用（底层同一数据结构）：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">m1</span> <span class="pl-c1">:=</span> <span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>{<span class="pl-s">"a"</span>: <span class="pl-c1">1</span>}
-<span class="pl-s1">m2</span> <span class="pl-c1">:=</span> <span class="pl-s1">m1</span>
-<span class="pl-s1">m2</span>[<span class="pl-s">"a"</span>] <span class="pl-c1">=</span> <span class="pl-c1">2</span>
-<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s1">m1</span>[<span class="pl-s">"a"</span>]) <span class="pl-c">// 2 （同步修改）</span></pre></div>
+<pre lang="go" class="notranslate"><code class="notranslate">m1 := map[string]int{"a": 1}
+m2 := m1
+m2["a"] = 2
+fmt.Println(m1["a"]) // 2 （同步修改）
+</code></pre>
 </li>
 </ul>
 <ol start="4">
@@ -301,20 +298,22 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <ul>
 <li>
 <p>并发读写会panic：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// 错误示例！</span>
-<span class="pl-k">go</span> <span class="pl-s1">write</span>(<span class="pl-s1">m</span>) <span class="pl-c">// 写操作</span>
-<span class="pl-k">go</span> <span class="pl-s1">read</span>(<span class="pl-s1">m</span>)   <span class="pl-c">// 读操作</span></pre></div>
+<pre lang="go" class="notranslate"><code class="notranslate">// 错误示例！
+go write(m) // 写操作
+go read(m)   // 读操作
+</code></pre>
 </li>
 <li>
 <p>解决方案：用<code class="notranslate">sync.RWMutex</code>或<code class="notranslate">sync.Map</code>（Go 1.9+）：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">var</span> <span class="pl-s1">mu</span> sync.<span class="pl-smi">RWMutex</span>
-<span class="pl-s1">mu</span>.<span class="pl-c1">Lock</span>()
-<span class="pl-s1">m</span>[<span class="pl-s">"key"</span>] <span class="pl-c1">=</span> <span class="pl-c1">1</span> <span class="pl-c">// 写加锁</span>
-<span class="pl-s1">mu</span>.<span class="pl-c1">Unlock</span>()
+<pre lang="go" class="notranslate"><code class="notranslate">var mu sync.RWMutex
+mu.Lock()
+m["key"] = 1 // 写加锁
+mu.Unlock()
 
-<span class="pl-s1">mu</span>.<span class="pl-c1">RLock</span>()
-<span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>[<span class="pl-s">"key"</span>] <span class="pl-c">// 读加锁</span>
-<span class="pl-s1">mu</span>.<span class="pl-c1">RUnlock</span>()</pre></div>
+mu.RLock()
+v := m["key"] // 读加锁
+mu.RUnlock()
+</code></pre>
 </li>
 </ul>
 <ol start="6">
@@ -335,49 +334,51 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <ul>
 <li>
 <p>若值为<code class="notranslate">nil</code>（如<code class="notranslate">map[int][]int</code>），需先初始化切片再操作：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-s1">m</span> <span class="pl-c1">:=</span> <span class="pl-s1">make</span>(<span class="pl-k">map</span>[<span class="pl-smi">int</span>][]<span class="pl-smi">int</span>)
-<span class="pl-c">// m[1][0] = 1 // panic: 索引nil切片</span>
+<pre lang="go" class="notranslate"><code class="notranslate">m := make(map[int][]int)
+// m[1][0] = 1 // panic: 索引nil切片
 
-<span class="pl-c">// 正确写法</span>
-<span class="pl-k">if</span> <span class="pl-s1">m</span>[<span class="pl-c1">1</span>] <span class="pl-c1">==</span> <span class="pl-c1">nil</span> {
-    <span class="pl-s1">m</span>[<span class="pl-c1">1</span>] <span class="pl-c1">=</span> <span class="pl-s1">make</span>([]<span class="pl-smi">int</span>, <span class="pl-c1">0</span>)
+// 正确写法
+if m[1] == nil {
+    m[1] = make([]int, 0)
 }
-<span class="pl-s1">m</span>[<span class="pl-c1">1</span>] <span class="pl-c1">=</span> <span class="pl-s1">append</span>(<span class="pl-s1">m</span>[<span class="pl-c1">1</span>], <span class="pl-c1">100</span>)</pre></div>
+m[1] = append(m[1], 100)
+</code></pre>
 </li>
 </ul>
 <p><strong>代码示例</strong></p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+<pre lang="go" class="notranslate"><code class="notranslate">package main
 
-<span class="pl-k">import</span> (
-    <span class="pl-s">"fmt"</span>
-    <span class="pl-s">"sync"</span>
+import (
+    "fmt"
+    "sync"
 )
 
-<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
-    <span class="pl-c">// 初始化</span>
-    <span class="pl-s1">m</span> <span class="pl-c1">:=</span> <span class="pl-k">map</span>[<span class="pl-smi">string</span>]<span class="pl-smi">int</span>{
-        <span class="pl-s">"a"</span>: <span class="pl-c1">1</span>,
-        <span class="pl-s">"b"</span>: <span class="pl-c1">2</span>,
+func main() {
+    // 初始化
+    m := map[string]int{
+        "a": 1,
+        "b": 2,
     }
 
-    <span class="pl-c">// 安全读写</span>
-    <span class="pl-k">var</span> <span class="pl-s1">mu</span> sync.<span class="pl-smi">RWMutex</span>
-    <span class="pl-s1">mu</span>.<span class="pl-c1">Lock</span>()
-    <span class="pl-s1">m</span>[<span class="pl-s">"c"</span>] <span class="pl-c1">=</span> <span class="pl-c1">3</span>
-    <span class="pl-s1">mu</span>.<span class="pl-c1">Unlock</span>()
+    // 安全读写
+    var mu sync.RWMutex
+    mu.Lock()
+    m["c"] = 3
+    mu.Unlock()
 
-    <span class="pl-c">// 检测键</span>
-    <span class="pl-k">if</span> <span class="pl-s1">v</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>[<span class="pl-s">"d"</span>]; <span class="pl-c1">!</span><span class="pl-s1">ok</span> {
-        <span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"d not exist"</span>) <span class="pl-c">// 输出</span>
+    // 检测键
+    if v, ok := m["d"]; !ok {
+        fmt.Println("d not exist") // 输出
     }
 
-    <span class="pl-c">// 并发安全遍历</span>
-    <span class="pl-s1">mu</span>.<span class="pl-c1">RLock</span>()
-    <span class="pl-k">for</span> <span class="pl-s1">k</span>, <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-k">range</span> <span class="pl-s1">m</span> {
-        <span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"%s:%d "</span>, <span class="pl-s1">k</span>, <span class="pl-s1">v</span>) <span class="pl-c">// 输出顺序随机</span>
+    // 并发安全遍历
+    mu.RLock()
+    for k, v := range m {
+        fmt.Printf("%s:%d ", k, v) // 输出顺序随机
     }
-    <span class="pl-s1">mu</span>.<span class="pl-c1">RUnlock</span>()
-}</pre></div>
+    mu.RUnlock()
+}
+</code></pre>
 <p><strong>总结</strong></p>
 <ul>
 <li>
@@ -401,106 +402,109 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <p>在并发编程中，我们的一条原则就是尽量减少锁的使用。一些单线程单进程的应用（比如 Redis 等），基本上不需要使用锁去解决并发线程访问的问题，所以可以取得很高的性能。但是对于 Go 开发的应用程序来说，并发是常用的一个特性，在这种情况下，我们能做的就是，<strong>尽量减少锁的粒度和锁的持有时间</strong>。</p>
 <p>减少锁的粒度常用的方法就是分片（Shard），将一把锁分成几把锁，每个锁控制一个分片。Go 比较知名的分片并发 map 的实现是<a href="https://github.com/orcaman/concurrent-map">orcaman/concurrent-map: a thread-safe concurrent map for go</a>。</p>
 <p>下面是一些源码的阅读：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">var</span> <span class="pl-s1">SHARD_COUNT</span> <span class="pl-c1">=</span> <span class="pl-c1">32</span>
+<pre lang="go" class="notranslate"><code class="notranslate">var SHARD_COUNT = 32
 
-<span class="pl-k">type</span> <span class="pl-smi">Stringer</span> <span class="pl-k">interface</span> {
-	fmt.<span class="pl-smi">Stringer</span>
-	<span class="pl-smi">comparable</span>
+type Stringer interface {
+	fmt.Stringer
+	comparable
 }
 
-<span class="pl-c">// A "thread" safe map of type string:Anything. 分成SHARD_COUNT个分片的map</span>
-<span class="pl-c">// To avoid lock bottlenecks this map is dived to several (SHARD_COUNT) map shards.</span>
-<span class="pl-k">type</span> <span class="pl-smi">ConcurrentMap</span>[<span class="pl-s1">K</span> <span class="pl-smi">comparable</span>, <span class="pl-s1">V</span> <span class="pl-smi">any</span>] <span class="pl-k">struct</span> {
-	<span class="pl-c1">shards</span>   []<span class="pl-c1">*</span><span class="pl-smi">ConcurrentMapShared</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]
-	<span class="pl-c1">sharding</span> <span class="pl-k">func</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>) <span class="pl-smi">uint32</span>
+// A "thread" safe map of type string:Anything. 分成SHARD_COUNT个分片的map
+// To avoid lock bottlenecks this map is dived to several (SHARD_COUNT) map shards.
+type ConcurrentMap[K comparable, V any] struct {
+	shards   []*ConcurrentMapShared[K, V]
+	sharding func(key K) uint32
 }
 
-<span class="pl-c">// A "thread" safe string to anything map. 通过RWMutex保护的线程安全的分片，包含一个map</span>
-<span class="pl-k">type</span> <span class="pl-smi">ConcurrentMapShared</span>[<span class="pl-s1">K</span> <span class="pl-smi">comparable</span>, <span class="pl-s1">V</span> <span class="pl-smi">any</span>] <span class="pl-k">struct</span> {
-	<span class="pl-c1">items</span>        <span class="pl-k">map</span>[<span class="pl-smi">K</span>]<span class="pl-smi">V</span>
-	sync.<span class="pl-smi">RWMutex</span> <span class="pl-c">// Read Write mutex, guards access to internal map.</span>
+// A "thread" safe string to anything map. 通过RWMutex保护的线程安全的分片，包含一个map
+type ConcurrentMapShared[K comparable, V any] struct {
+	items        map[K]V
+	sync.RWMutex // Read Write mutex, guards access to internal map.
 }
 
-<span class="pl-k">func</span> <span class="pl-s1">create</span>[<span class="pl-s1">K</span> <span class="pl-smi">comparable</span>, <span class="pl-s1">V</span> <span class="pl-smi">any</span>](<span class="pl-s1">sharding</span> <span class="pl-k">func</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>) <span class="pl-smi">uint32</span>) <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>] {
-	<span class="pl-s1">m</span> <span class="pl-c1">:=</span> <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]{
-		<span class="pl-s1">sharding</span>: <span class="pl-s1">sharding</span>,
-		<span class="pl-s1">shards</span>:   <span class="pl-s1">make</span>([]<span class="pl-c1">*</span><span class="pl-smi">ConcurrentMapShared</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>], <span class="pl-s1">SHARD_COUNT</span>),
+func create[K comparable, V any](sharding func(key K) uint32) ConcurrentMap[K, V] {
+	m := ConcurrentMap[K, V]{
+		sharding: sharding,
+		shards:   make([]*ConcurrentMapShared[K, V], SHARD_COUNT),
 	}
-	<span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">SHARD_COUNT</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
-		<span class="pl-s1">m</span>.<span class="pl-c1">shards</span>[<span class="pl-s1">i</span>] <span class="pl-c1">=</span> <span class="pl-c1">&amp;</span><span class="pl-smi">ConcurrentMapShared</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]{<span class="pl-s1">items</span>: <span class="pl-s1">make</span>(<span class="pl-k">map</span>[<span class="pl-smi">K</span>]<span class="pl-smi">V</span>)}
+	for i := 0; i &lt; SHARD_COUNT; i++ {
+		m.shards[i] = &amp;ConcurrentMapShared[K, V]{items: make(map[K]V)}
 	}
-	<span class="pl-k">return</span> <span class="pl-s1">m</span>
+	return m
 }
 
-<span class="pl-c">// Creates a new concurrent map. 创建并发map</span>
-<span class="pl-k">func</span> <span class="pl-s1">New</span>[<span class="pl-s1">V</span> <span class="pl-smi">any</span>]() <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">string</span>, <span class="pl-smi">V</span>] {
-	<span class="pl-k">return</span> <span class="pl-smi">create</span>[<span class="pl-smi">string</span>, <span class="pl-smi">V</span>](<span class="pl-s1">fnv32</span>)
+// Creates a new concurrent map. 创建并发map
+func New[V any]() ConcurrentMap[string, V] {
+	return create[string, V](fnv32)
 }
 
-<span class="pl-c">// Creates a new concurrent map.</span>
-<span class="pl-k">func</span> <span class="pl-s1">NewStringer</span>[<span class="pl-s1">K</span> <span class="pl-smi">Stringer</span>, <span class="pl-s1">V</span> <span class="pl-smi">any</span>]() <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>] {
-	<span class="pl-k">return</span> <span class="pl-smi">create</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>](<span class="pl-s1">strfnv32</span>[<span class="pl-s1">K</span>])
+// Creates a new concurrent map.
+func NewStringer[K Stringer, V any]() ConcurrentMap[K, V] {
+	return create[K, V](strfnv32[K])
 }
 
-<span class="pl-c">// Creates a new concurrent map.</span>
-<span class="pl-k">func</span> <span class="pl-s1">NewWithCustomShardingFunction</span>[<span class="pl-s1">K</span> <span class="pl-smi">comparable</span>, <span class="pl-s1">V</span> <span class="pl-smi">any</span>](<span class="pl-s1">sharding</span> <span class="pl-k">func</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>) <span class="pl-smi">uint32</span>) <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>] {
-	<span class="pl-k">return</span> <span class="pl-smi">create</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>](<span class="pl-s1">sharding</span>)
+// Creates a new concurrent map.
+func NewWithCustomShardingFunction[K comparable, V any](sharding func(key K) uint32) ConcurrentMap[K, V] {
+	return create[K, V](sharding)
 }
 
-<span class="pl-c">// GetShard returns shard under given key  根据key计算分片索引</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]) <span class="pl-c1">GetShard</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>) <span class="pl-c1">*</span><span class="pl-smi">ConcurrentMapShared</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>] {
-	<span class="pl-k">return</span> <span class="pl-s1">m</span>.<span class="pl-c1">shards</span>[<span class="pl-s1">uint</span>(<span class="pl-s1">m</span>.<span class="pl-c1">sharding</span>(<span class="pl-s1">key</span>))<span class="pl-c1">%</span><span class="pl-s1">uint</span>(<span class="pl-s1">SHARD_COUNT</span>)]
-}</pre></div>
+// GetShard returns shard under given key  根据key计算分片索引
+func (m ConcurrentMap[K, V]) GetShard(key K) *ConcurrentMapShared[K, V] {
+	return m.shards[uint(m.sharding(key))%uint(SHARD_COUNT)]
+}
+</code></pre>
 <p>增加或者查询时，首先根据分片索引得到分片对象，然后对分片对象加锁进行操作：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// Sets the given value under the specified key.</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]) <span class="pl-c1">Set</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>, <span class="pl-s1">value</span> <span class="pl-smi">V</span>) {
-	<span class="pl-c">// Get map shard. 根据key计算出对应的分片</span>
-	<span class="pl-s1">shard</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">GetShard</span>(<span class="pl-s1">key</span>)
-	<span class="pl-s1">shard</span>.<span class="pl-c1">Lock</span>()
-	<span class="pl-s1">shard</span>.<span class="pl-c1">items</span>[<span class="pl-s1">key</span>] <span class="pl-c1">=</span> <span class="pl-s1">value</span>
-	<span class="pl-s1">shard</span>.<span class="pl-c1">Unlock</span>()
+<pre lang="go" class="notranslate"><code class="notranslate">// Sets the given value under the specified key.
+func (m ConcurrentMap[K, V]) Set(key K, value V) {
+	// Get map shard. 根据key计算出对应的分片
+	shard := m.GetShard(key)
+	shard.Lock()
+	shard.items[key] = value
+	shard.Unlock()
 }
 
-<span class="pl-c">// Callback to return new element to be inserted into the map</span>
-<span class="pl-c">// It is called while lock is held, therefore it MUST NOT</span>
-<span class="pl-c">// try to access other keys in same map, as it can lead to deadlock since</span>
-<span class="pl-c">// Go sync.RWLock is not reentrant</span>
-<span class="pl-k">type</span> <span class="pl-smi">UpsertCb</span>[<span class="pl-s1">V</span> <span class="pl-smi">any</span>] <span class="pl-k">func</span>(<span class="pl-s1">exist</span> <span class="pl-smi">bool</span>, <span class="pl-s1">valueInMap</span> <span class="pl-smi">V</span>, <span class="pl-s1">newValue</span> <span class="pl-smi">V</span>) <span class="pl-smi">V</span>
+// Callback to return new element to be inserted into the map
+// It is called while lock is held, therefore it MUST NOT
+// try to access other keys in same map, as it can lead to deadlock since
+// Go sync.RWLock is not reentrant
+type UpsertCb[V any] func(exist bool, valueInMap V, newValue V) V
 
-<span class="pl-c">// Insert or Update - updates existing element or inserts a new one using UpsertCb</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]) <span class="pl-c1">Upsert</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>, <span class="pl-s1">value</span> <span class="pl-smi">V</span>, <span class="pl-s1">cb</span> <span class="pl-smi">UpsertCb</span>[<span class="pl-smi">V</span>]) (<span class="pl-s1">res</span> <span class="pl-smi">V</span>) {
-	<span class="pl-s1">shard</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">GetShard</span>(<span class="pl-s1">key</span>)
-	<span class="pl-s1">shard</span>.<span class="pl-c1">Lock</span>()
-	<span class="pl-s1">v</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">shard</span>.<span class="pl-c1">items</span>[<span class="pl-s1">key</span>]
-	<span class="pl-s1">res</span> <span class="pl-c1">=</span> <span class="pl-s1">cb</span>(<span class="pl-s1">ok</span>, <span class="pl-s1">v</span>, <span class="pl-s1">value</span>)
-	<span class="pl-s1">shard</span>.<span class="pl-c1">items</span>[<span class="pl-s1">key</span>] <span class="pl-c1">=</span> <span class="pl-s1">res</span>
-	<span class="pl-s1">shard</span>.<span class="pl-c1">Unlock</span>()
-	<span class="pl-k">return</span> <span class="pl-s1">res</span>
+// Insert or Update - updates existing element or inserts a new one using UpsertCb
+func (m ConcurrentMap[K, V]) Upsert(key K, value V, cb UpsertCb[V]) (res V) {
+	shard := m.GetShard(key)
+	shard.Lock()
+	v, ok := shard.items[key]
+	res = cb(ok, v, value)
+	shard.items[key] = res
+	shard.Unlock()
+	return res
 }
 
-<span class="pl-c">// Sets the given value under the specified key if no value was associated with it.</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]) <span class="pl-c1">SetIfAbsent</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>, <span class="pl-s1">value</span> <span class="pl-smi">V</span>) <span class="pl-smi">bool</span> {
-	<span class="pl-c">// Get map shard.</span>
-	<span class="pl-s1">shard</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">GetShard</span>(<span class="pl-s1">key</span>)
-	<span class="pl-s1">shard</span>.<span class="pl-c1">Lock</span>()
-	<span class="pl-s1">_</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">shard</span>.<span class="pl-c1">items</span>[<span class="pl-s1">key</span>]
-	<span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> {
-		<span class="pl-s1">shard</span>.<span class="pl-c1">items</span>[<span class="pl-s1">key</span>] <span class="pl-c1">=</span> <span class="pl-s1">value</span>
+// Sets the given value under the specified key if no value was associated with it.
+func (m ConcurrentMap[K, V]) SetIfAbsent(key K, value V) bool {
+	// Get map shard.
+	shard := m.GetShard(key)
+	shard.Lock()
+	_, ok := shard.items[key]
+	if !ok {
+		shard.items[key] = value
 	}
-	<span class="pl-s1">shard</span>.<span class="pl-c1">Unlock</span>()
-	<span class="pl-k">return</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span>
+	shard.Unlock()
+	return !ok
 }
 
-<span class="pl-c">// Get retrieves an element from map under given key.</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-smi">ConcurrentMap</span>[<span class="pl-smi">K</span>, <span class="pl-smi">V</span>]) <span class="pl-c1">Get</span>(<span class="pl-s1">key</span> <span class="pl-smi">K</span>) (<span class="pl-smi">V</span>, <span class="pl-smi">bool</span>) {
-	<span class="pl-c">// Get shard  根据key计算出对应的分片</span>
-	<span class="pl-s1">shard</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">GetShard</span>(<span class="pl-s1">key</span>)
-	<span class="pl-s1">shard</span>.<span class="pl-c1">RLock</span>()
-	<span class="pl-c">// Get item from shard. 从这个分片读取key的值</span>
-	<span class="pl-s1">val</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">shard</span>.<span class="pl-c1">items</span>[<span class="pl-s1">key</span>]
-	<span class="pl-s1">shard</span>.<span class="pl-c1">RUnlock</span>()
-	<span class="pl-k">return</span> <span class="pl-s1">val</span>, <span class="pl-s1">ok</span>
-}</pre></div>
+// Get retrieves an element from map under given key.
+func (m ConcurrentMap[K, V]) Get(key K) (V, bool) {
+	// Get shard  根据key计算出对应的分片
+	shard := m.GetShard(key)
+	shard.RLock()
+	// Get item from shard. 从这个分片读取key的值
+	val, ok := shard.items[key]
+	shard.RUnlock()
+	return val, ok
+}
+
+</code></pre>
 <h2>特殊场景使用sync.Map</h2>
 <p>在以下两个场景中使用 sync.Map，会比使用 map+RWMutex 的方式，性能要好得多：</p>
 <ol>
@@ -520,219 +524,224 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 </ul>
 <p>来看一下sync.Map的设计和实现，学习其处理的方式。</p>
 <p>相关源码：</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">Map</span> <span class="pl-k">struct</span> {
-	<span class="pl-c1">_</span> <span class="pl-smi">noCopy</span>
+<pre lang="go" class="notranslate"><code class="notranslate">type Map struct {
+	_ noCopy
 
-	<span class="pl-c1">mu</span> <span class="pl-smi">Mutex</span>
+	mu Mutex
 
-	<span class="pl-c">// read contains the portion of the map's contents that are safe for</span>
-	<span class="pl-c">// concurrent access (with or without mu held).</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// The read field itself is always safe to load, but must only be stored with</span>
-	<span class="pl-c">// mu held.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// Entries stored in read may be updated concurrently without mu, but updating</span>
-	<span class="pl-c">// a previously-expunged entry requires that the entry be copied to the dirty</span>
-	<span class="pl-c">// map and unexpunged with mu held.</span>
-    <span class="pl-c">// 基本上你可以把它看成一个安全的只读的map </span>
-    <span class="pl-c">// 它包含的元素其实也是通过原子操作更新的，但是已删除的entry就需要加锁操作了</span>
-	<span class="pl-c1">read</span> atomic.<span class="pl-smi">Pointer</span>[<span class="pl-smi">readOnly</span>]
+	// read contains the portion of the map's contents that are safe for
+	// concurrent access (with or without mu held).
+	//
+	// The read field itself is always safe to load, but must only be stored with
+	// mu held.
+	//
+	// Entries stored in read may be updated concurrently without mu, but updating
+	// a previously-expunged entry requires that the entry be copied to the dirty
+	// map and unexpunged with mu held.
+    // 基本上你可以把它看成一个安全的只读的map 
+    // 它包含的元素其实也是通过原子操作更新的，但是已删除的entry就需要加锁操作了
+	read atomic.Pointer[readOnly]
 
-	<span class="pl-c">// dirty contains the portion of the map's contents that require mu to be</span>
-	<span class="pl-c">// held. To ensure that the dirty map can be promoted to the read map quickly,</span>
-	<span class="pl-c">// it also includes all of the non-expunged entries in the read map.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// Expunged entries are not stored in the dirty map. An expunged entry in the</span>
-	<span class="pl-c">// clean map must be unexpunged and added to the dirty map before a new value</span>
-	<span class="pl-c">// can be stored to it.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// If the dirty map is nil, the next write to the map will initialize it by</span>
-	<span class="pl-c">// making a shallow copy of the clean map, omitting stale entries.</span>
-    <span class="pl-c">// 包含需要加锁才能访问的元素 </span>
-    <span class="pl-c">// 包括所有在read字段中但未被删除 的元素以及新加的元素</span>
-	<span class="pl-c1">dirty</span> <span class="pl-k">map</span>[<span class="pl-smi">any</span>]<span class="pl-c1">*</span><span class="pl-smi">entry</span>
+	// dirty contains the portion of the map's contents that require mu to be
+	// held. To ensure that the dirty map can be promoted to the read map quickly,
+	// it also includes all of the non-expunged entries in the read map.
+	//
+	// Expunged entries are not stored in the dirty map. An expunged entry in the
+	// clean map must be unexpunged and added to the dirty map before a new value
+	// can be stored to it.
+	//
+	// If the dirty map is nil, the next write to the map will initialize it by
+	// making a shallow copy of the clean map, omitting stale entries.
+    // 包含需要加锁才能访问的元素 
+    // 包括所有在read字段中但未被删除 的元素以及新加的元素
+	dirty map[any]*entry
 
-	<span class="pl-c">// misses counts the number of loads since the read map was last updated that</span>
-	<span class="pl-c">// needed to lock mu to determine whether the key was present.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// Once enough misses have occurred to cover the cost of copying the dirty</span>
-	<span class="pl-c">// map, the dirty map will be promoted to the read map (in the unamended</span>
-	<span class="pl-c">// state) and the next store to the map will make a new dirty copy.</span>
-    <span class="pl-c">//// 记录从read中读取miss的次数，一旦miss数和dirty长度一样了，就会把dirty提升为read，并把dirty置空</span>
-	<span class="pl-c1">misses</span> <span class="pl-smi">int</span>
+	// misses counts the number of loads since the read map was last updated that
+	// needed to lock mu to determine whether the key was present.
+	//
+	// Once enough misses have occurred to cover the cost of copying the dirty
+	// map, the dirty map will be promoted to the read map (in the unamended
+	// state) and the next store to the map will make a new dirty copy.
+    //// 记录从read中读取miss的次数，一旦miss数和dirty长度一样了，就会把dirty提升为read，并把dirty置空
+	misses int
 }
 
-<span class="pl-c">// readOnly is an immutable struct stored atomically in the Map.read field.</span>
-<span class="pl-k">type</span> <span class="pl-smi">readOnly</span> <span class="pl-k">struct</span> {
-	<span class="pl-c1">m</span>       <span class="pl-k">map</span>[<span class="pl-smi">any</span>]<span class="pl-c1">*</span><span class="pl-smi">entry</span>
-	<span class="pl-c1">amended</span> <span class="pl-smi">bool</span> <span class="pl-c">// true if the dirty map contains some key not in m. 当dirty中包含read没有的数据时为true，比如新增一条数据</span>
+// readOnly is an immutable struct stored atomically in the Map.read field.
+type readOnly struct {
+	m       map[any]*entry
+	amended bool // true if the dirty map contains some key not in m. 当dirty中包含read没有的数据时为true，比如新增一条数据
 }
 
-<span class="pl-c">// expunged is an arbitrary pointer that marks entries which have been deleted</span>
-<span class="pl-c">// from the dirty map.</span>
-<span class="pl-c">// expunged是用来标识此项已经删掉的指针</span>
-<span class="pl-c">// 当map中的一个项目被删除了，只是把它的值标记为expunged，以后才有机会真正删除此项</span>
-<span class="pl-k">var</span> <span class="pl-s1">expunged</span> <span class="pl-c1">=</span> <span class="pl-s1">new</span>(<span class="pl-smi">any</span>)
+// expunged is an arbitrary pointer that marks entries which have been deleted
+// from the dirty map.
+// expunged是用来标识此项已经删掉的指针
+// 当map中的一个项目被删除了，只是把它的值标记为expunged，以后才有机会真正删除此项
+var expunged = new(any)
 
-<span class="pl-c">// An entry is a slot in the map corresponding to a particular key. entry代表一个值</span>
-<span class="pl-k">type</span> <span class="pl-smi">entry</span> <span class="pl-k">struct</span> {
-	<span class="pl-c">// p points to the interface{} value stored for the entry.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// If p == nil, the entry has been deleted, and either m.dirty == nil or</span>
-	<span class="pl-c">// m.dirty[key] is e.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// If p == expunged, the entry has been deleted, m.dirty != nil, and the entry</span>
-	<span class="pl-c">// is missing from m.dirty.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// Otherwise, the entry is valid and recorded in m.read.m[key] and, if m.dirty</span>
-	<span class="pl-c">// != nil, in m.dirty[key].</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// An entry can be deleted by atomic replacement with nil: when m.dirty is</span>
-	<span class="pl-c">// next created, it will atomically replace nil with expunged and leave</span>
-	<span class="pl-c">// m.dirty[key] unset.</span>
-	<span class="pl-c">//</span>
-	<span class="pl-c">// An entry's associated value can be updated by atomic replacement, provided</span>
-	<span class="pl-c">// p != expunged. If p == expunged, an entry's associated value can be updated</span>
-	<span class="pl-c">// only after first setting m.dirty[key] = e so that lookups using the dirty</span>
-	<span class="pl-c">// map find the entry.</span>
-	<span class="pl-c1">p</span> atomic.<span class="pl-smi">Pointer</span>[<span class="pl-smi">any</span>]
-}</pre></div>
+// An entry is a slot in the map corresponding to a particular key. entry代表一个值
+type entry struct {
+	// p points to the interface{} value stored for the entry.
+	//
+	// If p == nil, the entry has been deleted, and either m.dirty == nil or
+	// m.dirty[key] is e.
+	//
+	// If p == expunged, the entry has been deleted, m.dirty != nil, and the entry
+	// is missing from m.dirty.
+	//
+	// Otherwise, the entry is valid and recorded in m.read.m[key] and, if m.dirty
+	// != nil, in m.dirty[key].
+	//
+	// An entry can be deleted by atomic replacement with nil: when m.dirty is
+	// next created, it will atomically replace nil with expunged and leave
+	// m.dirty[key] unset.
+	//
+	// An entry's associated value can be updated by atomic replacement, provided
+	// p != expunged. If p == expunged, an entry's associated value can be updated
+	// only after first setting m.dirty[key] = e so that lookups using the dirty
+	// map find the entry.
+	p atomic.Pointer[any]
+}
+</code></pre>
 <p>如果 dirty 字段非 nil 的话，map 的 read 字段和 dirty 字段会包含相同的非 expunged 的项，所以如果通过 read 字段更改了这个项的值，从 dirty 字段中也会读取到这个项的新值，因为本来它们指向的就是同一个地址。</p>
 <p>dirty 包含重复项目的好处就是，一旦 miss 数达到阈值需要将 dirty 提升为 read 的话，只需简单地把 dirty 设置为 read 对象即可。不好的一点就是，当创建新的 dirty 对象的时候，需要逐条遍历 read，把非 expunged 的项复制到 dirty 对象中。</p>
 <h3>Store方法</h3>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// Store sets the value for a key.</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Map</span>) <span class="pl-c1">Store</span>(<span class="pl-s1">key</span>, <span class="pl-s1">value</span> <span class="pl-smi">any</span>) {
-	<span class="pl-s1">_</span>, <span class="pl-s1">_</span> <span class="pl-c1">=</span> <span class="pl-s1">m</span>.<span class="pl-c1">Swap</span>(<span class="pl-s1">key</span>, <span class="pl-s1">value</span>)
+<pre lang="go" class="notranslate"><code class="notranslate">// Store sets the value for a key.
+func (m *Map) Store(key, value any) {
+	_, _ = m.Swap(key, value)
 }
-<span class="pl-c">// Swap swaps the value for a key and returns the previous value if any.</span>
-<span class="pl-c">// The loaded result reports whether the key was present.</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Map</span>) <span class="pl-c1">Swap</span>(<span class="pl-s1">key</span>, <span class="pl-s1">value</span> <span class="pl-smi">any</span>) (<span class="pl-s1">previous</span> <span class="pl-smi">any</span>, <span class="pl-s1">loaded</span> <span class="pl-smi">bool</span>) {
-	<span class="pl-s1">read</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">loadReadOnly</span>()
-    <span class="pl-c">// 如果read字段包含这个项，说明是更新，cas更新项目的值即可</span>
-	<span class="pl-k">if</span> <span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">read</span>.<span class="pl-c1">m</span>[<span class="pl-s1">key</span>]; <span class="pl-s1">ok</span> {
-		<span class="pl-k">if</span> <span class="pl-s1">v</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">e</span>.<span class="pl-c1">trySwap</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">value</span>); <span class="pl-s1">ok</span> {
-			<span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">==</span> <span class="pl-c1">nil</span> {
-				<span class="pl-k">return</span> <span class="pl-c1">nil</span>, <span class="pl-c1">false</span>
+// Swap swaps the value for a key and returns the previous value if any.
+// The loaded result reports whether the key was present.
+func (m *Map) Swap(key, value any) (previous any, loaded bool) {
+	read := m.loadReadOnly()
+    // 如果read字段包含这个项，说明是更新，cas更新项目的值即可
+	if e, ok := read.m[key]; ok {
+		if v, ok := e.trySwap(&amp;value); ok {
+			if v == nil {
+				return nil, false
 			}
-			<span class="pl-k">return</span> <span class="pl-c1">*</span><span class="pl-s1">v</span>, <span class="pl-c1">true</span>
+			return *v, true
 		}
 	}
-	<span class="pl-c">// read中不存在，或者cas更新失败，就需要加锁访问dirty了</span>
-	<span class="pl-s1">m</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Lock</span>()
-	<span class="pl-s1">read</span> <span class="pl-c1">=</span> <span class="pl-s1">m</span>.<span class="pl-c1">loadReadOnly</span>()
-	<span class="pl-k">if</span> <span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">read</span>.<span class="pl-c1">m</span>[<span class="pl-s1">key</span>]; <span class="pl-s1">ok</span> { <span class="pl-c">// 双检查，看看read是否已经存在了</span>
-		<span class="pl-k">if</span> <span class="pl-s1">e</span>.<span class="pl-c1">unexpungeLocked</span>() {
-			<span class="pl-c">// The entry was previously expunged, which implies that there is a</span>
-			<span class="pl-c">// non-nil dirty map and this entry is not in it.</span>
-            <span class="pl-c">// 此项目先前已经被删除了，通过将它的值设置为nil，标记为unexpunged</span>
-			<span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>[<span class="pl-s1">key</span>] <span class="pl-c1">=</span> <span class="pl-s1">e</span> <span class="pl-c">// 更新</span>
+	// read中不存在，或者cas更新失败，就需要加锁访问dirty了
+	m.mu.Lock()
+	read = m.loadReadOnly()
+	if e, ok := read.m[key]; ok { // 双检查，看看read是否已经存在了
+		if e.unexpungeLocked() {
+			// The entry was previously expunged, which implies that there is a
+			// non-nil dirty map and this entry is not in it.
+            // 此项目先前已经被删除了，通过将它的值设置为nil，标记为unexpunged
+			m.dirty[key] = e // 更新
 		}
-		<span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">e</span>.<span class="pl-c1">swapLocked</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">value</span>); <span class="pl-s1">v</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
-			<span class="pl-s1">loaded</span> <span class="pl-c1">=</span> <span class="pl-c1">true</span>
-			<span class="pl-s1">previous</span> <span class="pl-c1">=</span> <span class="pl-c1">*</span><span class="pl-s1">v</span>
+		if v := e.swapLocked(&amp;value); v != nil {
+			loaded = true
+			previous = *v
 		}
-	} <span class="pl-k">else</span> <span class="pl-k">if</span> <span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>[<span class="pl-s1">key</span>]; <span class="pl-s1">ok</span> { <span class="pl-c">// 如果dirty中有此项</span>
-		<span class="pl-k">if</span> <span class="pl-s1">v</span> <span class="pl-c1">:=</span> <span class="pl-s1">e</span>.<span class="pl-c1">swapLocked</span>(<span class="pl-c1">&amp;</span><span class="pl-s1">value</span>); <span class="pl-s1">v</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
-			<span class="pl-s1">loaded</span> <span class="pl-c1">=</span> <span class="pl-c1">true</span>
-			<span class="pl-s1">previous</span> <span class="pl-c1">=</span> <span class="pl-c1">*</span><span class="pl-s1">v</span>
+	} else if e, ok := m.dirty[key]; ok { // 如果dirty中有此项
+		if v := e.swapLocked(&amp;value); v != nil {
+			loaded = true
+			previous = *v
 		}
-	} <span class="pl-k">else</span> {
-		<span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">read</span>.<span class="pl-c1">amended</span> {  <span class="pl-c">//如果dirty为nil</span>
-			<span class="pl-c">// We're adding the first new key to the dirty map.</span>
-			<span class="pl-c">// Make sure it is allocated and mark the read-only map as incomplete.</span>
-            <span class="pl-c">// 需要创建dirty对象，并且标记read的amended为true</span>
-            <span class="pl-c">// 说明有元素它不包含而dirty包含</span>
-			<span class="pl-s1">m</span>.<span class="pl-c1">dirtyLocked</span>()
-			<span class="pl-s1">m</span>.<span class="pl-c1">read</span>.<span class="pl-c1">Store</span>(<span class="pl-c1">&amp;</span><span class="pl-smi">readOnly</span>{<span class="pl-s1">m</span>: <span class="pl-s1">read</span>.<span class="pl-c1">m</span>, <span class="pl-s1">amended</span>: <span class="pl-c1">true</span>})
+	} else {
+		if !read.amended {  //如果dirty为nil
+			// We're adding the first new key to the dirty map.
+			// Make sure it is allocated and mark the read-only map as incomplete.
+            // 需要创建dirty对象，并且标记read的amended为true
+            // 说明有元素它不包含而dirty包含
+			m.dirtyLocked()
+			m.read.Store(&amp;readOnly{m: read.m, amended: true})
 		}
-		<span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>[<span class="pl-s1">key</span>] <span class="pl-c1">=</span> <span class="pl-s1">newEntry</span>(<span class="pl-s1">value</span>) <span class="pl-c">//将新值增加到dirty对象中</span>
+		m.dirty[key] = newEntry(value) //将新值增加到dirty对象中
 	}
-	<span class="pl-s1">m</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Unlock</span>()
-	<span class="pl-k">return</span> <span class="pl-s1">previous</span>, <span class="pl-s1">loaded</span>
-}</pre></div>
+	m.mu.Unlock()
+	return previous, loaded
+}
+</code></pre>
 <p>Store 既可以是新增元素，也可以是更新元素。如果运气好的话，更新的是已存在的未被删除的元素，直接更新即可，不会用到锁。如果运气不好，需要更新（重用）删除的对象、更新还未提升的 dirty 中的对象，或者新增加元素的时候就会使用到了锁，这个时候，性能就会下降。</p>
 <p>所以从这一点来看，sync.Map 适合那些只会增长的缓存系统，可以进行更新，但是不要删除，并且不要频繁地增加新元素。</p>
 <h3>Load方法</h3>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Map</span>) <span class="pl-c1">Load</span>(<span class="pl-s1">key</span> <span class="pl-smi">any</span>) (<span class="pl-s1">value</span> <span class="pl-smi">any</span>, <span class="pl-s1">ok</span> <span class="pl-smi">bool</span>) {
-    <span class="pl-c">// 首先从read处理</span>
-	<span class="pl-s1">read</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">loadReadOnly</span>()
-	<span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">read</span>.<span class="pl-c1">m</span>[<span class="pl-s1">key</span>]
-	<span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">read</span>.<span class="pl-c1">amended</span> {  <span class="pl-c">// 如果不存在并且dirty不为nil(有新的元素)</span>
-		<span class="pl-s1">m</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Lock</span>()
-		<span class="pl-c">// Avoid reporting a spurious miss if m.dirty got promoted while we were</span>
-		<span class="pl-c">// blocked on m.mu. (If further loads of the same key will not miss, it's</span>
-		<span class="pl-c">// not worth copying the dirty map for this key.)</span>
-        <span class="pl-c">// 双检查，看看read中现在是否存在此key</span>
-		<span class="pl-s1">read</span> <span class="pl-c1">=</span> <span class="pl-s1">m</span>.<span class="pl-c1">loadReadOnly</span>()
-		<span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">=</span> <span class="pl-s1">read</span>.<span class="pl-c1">m</span>[<span class="pl-s1">key</span>]
-		<span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">read</span>.<span class="pl-c1">amended</span> { <span class="pl-c">//依然不存在，并且dirty不为nil</span>
-			<span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">=</span> <span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>[<span class="pl-s1">key</span>] <span class="pl-c">// 从dirty中读取</span>
-			<span class="pl-c">// Regardless of whether the entry was present, record a miss: this key</span>
-			<span class="pl-c">// will take the slow path until the dirty map is promoted to the read</span>
-			<span class="pl-c">// map. // 不管dirty中存不存在，miss数都加1</span>
-			<span class="pl-s1">m</span>.<span class="pl-c1">missLocked</span>()
+<pre lang="go" class="notranslate"><code class="notranslate">func (m *Map) Load(key any) (value any, ok bool) {
+    // 首先从read处理
+	read := m.loadReadOnly()
+	e, ok := read.m[key]
+	if !ok &amp;&amp; read.amended {  // 如果不存在并且dirty不为nil(有新的元素)
+		m.mu.Lock()
+		// Avoid reporting a spurious miss if m.dirty got promoted while we were
+		// blocked on m.mu. (If further loads of the same key will not miss, it's
+		// not worth copying the dirty map for this key.)
+        // 双检查，看看read中现在是否存在此key
+		read = m.loadReadOnly()
+		e, ok = read.m[key]
+		if !ok &amp;&amp; read.amended { //依然不存在，并且dirty不为nil
+			e, ok = m.dirty[key] // 从dirty中读取
+			// Regardless of whether the entry was present, record a miss: this key
+			// will take the slow path until the dirty map is promoted to the read
+			// map. // 不管dirty中存不存在，miss数都加1
+			m.missLocked()
 		}
-		<span class="pl-s1">m</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Unlock</span>()
+		m.mu.Unlock()
 	}
-	<span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> {
-		<span class="pl-k">return</span> <span class="pl-c1">nil</span>, <span class="pl-c1">false</span>
+	if !ok {
+		return nil, false
 	}
-	<span class="pl-k">return</span> <span class="pl-s1">e</span>.<span class="pl-c1">load</span>() <span class="pl-c">//返回读取的对象，e既可能是从read中获得的，也可能是从dirty中获得的</span>
-}</pre></div>
+	return e.load() //返回读取的对象，e既可能是从read中获得的，也可能是从dirty中获得的
+}
+</code></pre>
 <p>如果幸运的话，我们从 read 中读取到了这个 key 对应的值，那么就不需要加锁了，性能会非常好。但是，如果请求的 key 不存在或者是新加的，就需要加锁从 dirty 中读取。所以，读取不存在的 key 会因为加锁而导致性能下降，读取还没有提升的新值的情况下也会因为加锁性能下降。</p>
 <p>其中，missLocked 增加 miss 的时候，如果 miss 数等于 dirty 长度，会将 dirty 提升为 read，并将 dirty 置空。</p>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Map</span>) <span class="pl-c1">missLocked</span>() {
-	<span class="pl-s1">m</span>.<span class="pl-c1">misses</span><span class="pl-c1">++</span> <span class="pl-c">// misses计数加一</span>
-	<span class="pl-k">if</span> <span class="pl-s1">m</span>.<span class="pl-c1">misses</span> <span class="pl-c1">&lt;</span> <span class="pl-s1">len</span>(<span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>) { <span class="pl-c">// 如果没达到阈值(dirty字段的长度),返回</span>
-		<span class="pl-k">return</span>
+<pre lang="go" class="notranslate"><code class="notranslate">func (m *Map) missLocked() {
+	m.misses++ // misses计数加一
+	if m.misses &lt; len(m.dirty) { // 如果没达到阈值(dirty字段的长度),返回
+		return
 	}
-	<span class="pl-s1">m</span>.<span class="pl-c1">read</span>.<span class="pl-c1">Store</span>(<span class="pl-c1">&amp;</span><span class="pl-smi">readOnly</span>{<span class="pl-s1">m</span>: <span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>}) <span class="pl-c1">/</span><span class="pl-s1">把dirty字段的内存提升为read字段</span>
-	<span class="pl-s1">m</span>.<span class="pl-c1">dirty</span> <span class="pl-c1">=</span> <span class="pl-c1">nil</span> <span class="pl-c">// 清空dirty</span>
-	<span class="pl-s1">m</span>.<span class="pl-c1">misses</span> <span class="pl-c1">=</span> <span class="pl-c1">0</span> <span class="pl-c">// misses数重置为0</span>
-}</pre></div>
+	m.read.Store(&amp;readOnly{m: m.dirty}) /把dirty字段的内存提升为read字段
+	m.dirty = nil // 清空dirty
+	m.misses = 0 // misses数重置为0
+}
+</code></pre>
 <h3>Delete方法</h3>
-<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-c">// Delete deletes the value for a key.</span>
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Map</span>) <span class="pl-c1">Delete</span>(<span class="pl-s1">key</span> <span class="pl-smi">any</span>) {
-	<span class="pl-s1">m</span>.<span class="pl-c1">LoadAndDelete</span>(<span class="pl-s1">key</span>)
+<pre lang="go" class="notranslate"><code class="notranslate">// Delete deletes the value for a key.
+func (m *Map) Delete(key any) {
+	m.LoadAndDelete(key)
 }
 
 
-<span class="pl-k">func</span> (<span class="pl-s1">m</span> <span class="pl-c1">*</span><span class="pl-smi">Map</span>) <span class="pl-c1">LoadAndDelete</span>(<span class="pl-s1">key</span> <span class="pl-smi">any</span>) (<span class="pl-s1">value</span> <span class="pl-smi">any</span>, <span class="pl-s1">loaded</span> <span class="pl-smi">bool</span>) {
-	<span class="pl-s1">read</span> <span class="pl-c1">:=</span> <span class="pl-s1">m</span>.<span class="pl-c1">loadReadOnly</span>()
-	<span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">read</span>.<span class="pl-c1">m</span>[<span class="pl-s1">key</span>]
-	<span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">read</span>.<span class="pl-c1">amended</span> {
-		<span class="pl-s1">m</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Lock</span>()
-        <span class="pl-c">// 双检查</span>
-		<span class="pl-s1">read</span> <span class="pl-c1">=</span> <span class="pl-s1">m</span>.<span class="pl-c1">loadReadOnly</span>()
-		<span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">=</span> <span class="pl-s1">read</span>.<span class="pl-c1">m</span>[<span class="pl-s1">key</span>]
-		<span class="pl-k">if</span> <span class="pl-c1">!</span><span class="pl-s1">ok</span> <span class="pl-c1">&amp;&amp;</span> <span class="pl-s1">read</span>.<span class="pl-c1">amended</span> {
-			<span class="pl-s1">e</span>, <span class="pl-s1">ok</span> <span class="pl-c1">=</span> <span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>[<span class="pl-s1">key</span>]
-			<span class="pl-s1">delete</span>(<span class="pl-s1">m</span>.<span class="pl-c1">dirty</span>, <span class="pl-s1">key</span>)
-			<span class="pl-c">// Regardless of whether the entry was present, record a miss: this key</span>
-			<span class="pl-c">// will take the slow path until the dirty map is promoted to the read</span>
-			<span class="pl-c">// map.</span>
-            <span class="pl-c">// miss数加1</span>
-			<span class="pl-s1">m</span>.<span class="pl-c1">missLocked</span>()
+func (m *Map) LoadAndDelete(key any) (value any, loaded bool) {
+	read := m.loadReadOnly()
+	e, ok := read.m[key]
+	if !ok &amp;&amp; read.amended {
+		m.mu.Lock()
+        // 双检查
+		read = m.loadReadOnly()
+		e, ok = read.m[key]
+		if !ok &amp;&amp; read.amended {
+			e, ok = m.dirty[key]
+			delete(m.dirty, key)
+			// Regardless of whether the entry was present, record a miss: this key
+			// will take the slow path until the dirty map is promoted to the read
+			// map.
+            // miss数加1
+			m.missLocked()
 		}
-		<span class="pl-s1">m</span>.<span class="pl-c1">mu</span>.<span class="pl-c1">Unlock</span>()
+		m.mu.Unlock()
 	}
-	<span class="pl-k">if</span> <span class="pl-s1">ok</span> {
-		<span class="pl-k">return</span> <span class="pl-s1">e</span>.<span class="pl-c1">delete</span>()
+	if ok {
+		return e.delete()
 	}
-	<span class="pl-k">return</span> <span class="pl-c1">nil</span>, <span class="pl-c1">false</span>
+	return nil, false
 }
 
-<span class="pl-k">func</span> (<span class="pl-s1">e</span> <span class="pl-c1">*</span><span class="pl-smi">entry</span>) <span class="pl-c1">delete</span>() (<span class="pl-s1">value</span> <span class="pl-smi">any</span>, <span class="pl-s1">ok</span> <span class="pl-smi">bool</span>) {
-	<span class="pl-k">for</span> {
-		<span class="pl-s1">p</span> <span class="pl-c1">:=</span> <span class="pl-s1">e</span>.<span class="pl-c1">p</span>.<span class="pl-c1">Load</span>()
-		<span class="pl-k">if</span> <span class="pl-s1">p</span> <span class="pl-c1">==</span> <span class="pl-c1">nil</span> <span class="pl-c1">||</span> <span class="pl-s1">p</span> <span class="pl-c1">==</span> <span class="pl-s1">expunged</span> {
-			<span class="pl-k">return</span> <span class="pl-c1">nil</span>, <span class="pl-c1">false</span>
+func (e *entry) delete() (value any, ok bool) {
+	for {
+		p := e.p.Load()
+		if p == nil || p == expunged {
+			return nil, false
 		}
-		<span class="pl-k">if</span> <span class="pl-s1">e</span>.<span class="pl-c1">p</span>.<span class="pl-c1">CompareAndSwap</span>(<span class="pl-s1">p</span>, <span class="pl-c1">nil</span>) {
-			<span class="pl-k">return</span> <span class="pl-c1">*</span><span class="pl-s1">p</span>, <span class="pl-c1">true</span>
+		if e.p.CompareAndSwap(p, nil) {
+			return *p, true
 		}
 	}
-}</pre></div>
+}
+</code></pre>
 <p>如果 read 中不存在，那么就需要从 dirty 中寻找这个项目。最终，如果项目存在就删除（将它的值标记为 nil）。如果项目不为 nil 或者没有被标记为 expunged，那么还可以把它的值返回。</p>
 <p>sync.map 还有一些 LoadAndDelete、LoadOrStore、Range 等辅助方法，但是没有 Len 这样查询 sync.Map 的包含项目数量的方法，并且官方也不准备提供。如果你想得到 sync.Map 的项目数量的话，你可能不得不通过 Range 逐个计数。</p></div>
 <div style="font-size:small;margin-top:8px;float:right;"></div>
@@ -759,7 +768,7 @@ if(""!=""){
 </script></div>
 </body>
 <script>
-var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z'};
 var utterancesLoad=0;
 
 let themeSettings={
@@ -833,70 +842,7 @@ function iFrameLoading(){
     }
 }
 
-document.addEventListener('DOMContentLoaded', () => {
-    const createClipboardHTML = (codeContent, additionalClasses = '') => `
-        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
-        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
-            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
-                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
-                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
-            </clipboard-copy>
-            <div class="copy-feedback">Copied!</div>
-        </div>
-    `;
 
-    const handleCodeElements = (selector = '') => {
-        document.querySelectorAll(selector).forEach(codeElement => {
-            const codeContent = codeElement.innerHTML;
-            const newStructure = document.createElement('div');
-            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
-            newStructure.innerHTML = createClipboardHTML(codeContent);
-
-            const parentElement = codeElement.parentElement;
-            if (selector.includes('highlight')) {
-                parentElement.insertBefore(newStructure, codeElement.nextSibling);
-                parentElement.removeChild(codeElement);
-            } else {
-                parentElement.parentElement.replaceChild(newStructure, parentElement);
-            }
-        });
-    };
-
-    handleCodeElements('pre.notranslate > code.notranslate');
-    handleCodeElements('div.highlight > pre.notranslate');
-
-    let currentFeedback = null;
-    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
-        copyButton.addEventListener('click', () => {
-            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
-            const tempTextArea = document.createElement('textarea');
-            tempTextArea.value = codeContent;
-            document.body.appendChild(tempTextArea);
-            tempTextArea.select();
-            document.execCommand('copy');
-            document.body.removeChild(tempTextArea);
-
-            const copyIcon = copyButton.querySelector('.octicon-copy');
-            const checkIcon = copyButton.querySelector('.octicon-check');
-            const copyFeedback = copyButton.nextElementSibling;
-
-            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
-            currentFeedback = copyFeedback;
-
-            copyIcon.classList.add('d-none');
-            checkIcon.classList.remove('d-none');
-            copyFeedback.style.display = 'block';
-            copyButton.style.borderColor = 'var(--color-success-fg)';
-
-            setTimeout(() => {
-                copyIcon.classList.remove('d-none');
-                checkIcon.classList.add('d-none');
-                copyFeedback.style.display = 'none';
-                copyButton.style.borderColor = '';
-            }, 2000);
-        });
-    });
-});
 
 </script>
 <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
