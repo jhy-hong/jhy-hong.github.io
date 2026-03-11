@@ -373,7 +373,7 @@ EXPLAIN SELECT * FROM users WHERE phone = '1302706965';
 <meta property="og:url" content="https://jhy-hong.github.io/post/di-yi-zhang-%20mysql-xiang-guan-you-hua-%EF%BC%88-suo-yin-wei-du-%EF%BC%89.html">
 <meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
 <title>第一章 mysql相关优化（索引维度）</title>
-<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
 
 
 </head>
@@ -443,130 +443,139 @@ body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;
 <h3>建表测试</h3>
 <p>先设计几张表，用户表 <code class="notranslate">users</code>，商品表 <code class="notranslate">products</code>，订单表 <code class="notranslate">orders</code>,订单明细表 <code class="notranslate">order_items</code></p>
 <p>用户表 <code class="notranslate">users</code></p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">users</span> (
-    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>用户ID<span class="pl-pds">'</span></span>,
-    username <span class="pl-k">VARCHAR</span>(<span class="pl-c1">64</span>) <span class="pl-k">NOT NULL</span> UNIQUE COMMENT <span class="pl-s"><span class="pl-pds">'</span>用户名<span class="pl-pds">'</span></span>,
-    email <span class="pl-k">VARCHAR</span>(<span class="pl-c1">128</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>邮箱<span class="pl-pds">'</span></span>,
-    phone <span class="pl-k">VARCHAR</span>(<span class="pl-c1">20</span>) DEFAULT <span class="pl-k">NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>手机号<span class="pl-pds">'</span></span>,
-    created_at DATETIME DEFAULT <span class="pl-c1">CURRENT_TIMESTAMP</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>注册时间<span class="pl-pds">'</span></span>
-) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;
+<pre lang="sql" class="notranslate"><code class="notranslate">CREATE TABLE users (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '用户ID',
+    username VARCHAR(64) NOT NULL UNIQUE COMMENT '用户名',
+    email VARCHAR(128) NOT NULL COMMENT '邮箱',
+    phone VARCHAR(20) DEFAULT NULL COMMENT '手机号',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '注册时间'
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-</pre></div>
+
+</code></pre>
 <p>商品表 <code class="notranslate">products</code></p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">products</span> (
-    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>商品ID<span class="pl-pds">'</span></span>,
-    name <span class="pl-k">VARCHAR</span>(<span class="pl-c1">128</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>商品名称<span class="pl-pds">'</span></span>,
-    category <span class="pl-k">VARCHAR</span>(<span class="pl-c1">64</span>) DEFAULT <span class="pl-k">NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>分类<span class="pl-pds">'</span></span>,
-    price <span class="pl-k">DECIMAL</span>(<span class="pl-c1">10</span>, <span class="pl-c1">2</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>价格<span class="pl-pds">'</span></span>,
-    stock <span class="pl-k">INT</span> <span class="pl-k">NOT NULL</span> DEFAULT <span class="pl-c1">0</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>库存<span class="pl-pds">'</span></span>,
-    created_at DATETIME DEFAULT <span class="pl-c1">CURRENT_TIMESTAMP</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>上架时间<span class="pl-pds">'</span></span>,
+<pre lang="sql" class="notranslate"><code class="notranslate">CREATE TABLE products (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '商品ID',
+    name VARCHAR(128) NOT NULL COMMENT '商品名称',
+    category VARCHAR(64) DEFAULT NULL COMMENT '分类',
+    price DECIMAL(10, 2) NOT NULL COMMENT '价格',
+    stock INT NOT NULL DEFAULT 0 COMMENT '库存',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '上架时间',
     INDEX idx_category_price (category, price)
-) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
 
-</pre></div>
+
+</code></pre>
 <p>订单表 <code class="notranslate">orders</code></p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">orders</span> (
-    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单ID<span class="pl-pds">'</span></span>,
-    user_id <span class="pl-k">BIGINT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>下单用户ID<span class="pl-pds">'</span></span>,
-    order_no <span class="pl-k">VARCHAR</span>(<span class="pl-c1">64</span>) <span class="pl-k">NOT NULL</span> UNIQUE COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单号<span class="pl-pds">'</span></span>,
-    status TINYINT <span class="pl-k">NOT NULL</span> DEFAULT <span class="pl-c1">0</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单状态 0-待支付 1-已支付 2-已发货 3-完成<span class="pl-pds">'</span></span>,
-    total_amount <span class="pl-k">DECIMAL</span>(<span class="pl-c1">10</span>,<span class="pl-c1">2</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单总额<span class="pl-pds">'</span></span>,
-    created_at DATETIME DEFAULT <span class="pl-c1">CURRENT_TIMESTAMP</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>下单时间<span class="pl-pds">'</span></span>,
+<pre lang="sql" class="notranslate"><code class="notranslate">CREATE TABLE orders (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '订单ID',
+    user_id BIGINT NOT NULL COMMENT '下单用户ID',
+    order_no VARCHAR(64) NOT NULL UNIQUE COMMENT '订单号',
+    status TINYINT NOT NULL DEFAULT 0 COMMENT '订单状态 0-待支付 1-已支付 2-已发货 3-完成',
+    total_amount DECIMAL(10,2) NOT NULL COMMENT '订单总额',
+    created_at DATETIME DEFAULT CURRENT_TIMESTAMP COMMENT '下单时间',
     INDEX idx_user_created (user_id, created_at),
-    <span class="pl-k">FOREIGN KEY</span> (user_id) <span class="pl-k">REFERENCES</span> users(id)
-) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;
-</pre></div>
+    FOREIGN KEY (user_id) REFERENCES users(id)
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+
+</code></pre>
 <p>订单明细表 <code class="notranslate">order_items</code></p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">TABLE</span> <span class="pl-en">order_items</span> (
-    id <span class="pl-k">BIGINT</span> <span class="pl-k">PRIMARY KEY</span> AUTO_INCREMENT COMMENT <span class="pl-s"><span class="pl-pds">'</span>明细ID<span class="pl-pds">'</span></span>,
-    order_id <span class="pl-k">BIGINT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>订单ID<span class="pl-pds">'</span></span>,
-    product_id <span class="pl-k">BIGINT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>商品ID<span class="pl-pds">'</span></span>,
-    quantity <span class="pl-k">INT</span> <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>购买数量<span class="pl-pds">'</span></span>,
-    price <span class="pl-k">DECIMAL</span>(<span class="pl-c1">10</span>,<span class="pl-c1">2</span>) <span class="pl-k">NOT NULL</span> COMMENT <span class="pl-s"><span class="pl-pds">'</span>单价<span class="pl-pds">'</span></span>,
-    <span class="pl-k">FOREIGN KEY</span> (order_id) <span class="pl-k">REFERENCES</span> orders(id),
-    <span class="pl-k">FOREIGN KEY</span> (product_id) <span class="pl-k">REFERENCES</span> products(id),
+<pre lang="sql" class="notranslate"><code class="notranslate">CREATE TABLE order_items (
+    id BIGINT PRIMARY KEY AUTO_INCREMENT COMMENT '明细ID',
+    order_id BIGINT NOT NULL COMMENT '订单ID',
+    product_id BIGINT NOT NULL COMMENT '商品ID',
+    quantity INT NOT NULL COMMENT '购买数量',
+    price DECIMAL(10,2) NOT NULL COMMENT '单价',
+    FOREIGN KEY (order_id) REFERENCES orders(id),
+    FOREIGN KEY (product_id) REFERENCES products(id),
     INDEX idx_order_product (order_id, product_id)
-) ENGINE<span class="pl-k">=</span>InnoDB DEFAULT CHARSET<span class="pl-k">=</span>utf8mb4;</pre></div>
+) ENGINE=InnoDB DEFAULT CHARSET=utf8mb4;
+</code></pre>
 <h3>生成大量数据以供测试</h3>
 <p>生成测试的数据，可以使用sql脚本，python脚本等</p>
 <p>批量生成 <code class="notranslate">users</code> 数据（10 万条）</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">START TRANSACTION</span>;
+<pre lang="sql" class="notranslate"><code class="notranslate">START TRANSACTION;
 
-<span class="pl-k">INSERT INTO</span> users (username, email, phone, created_at)
-<span class="pl-k">SELECT</span>
-  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>user_<span class="pl-pds">'</span></span>, LPAD(id, <span class="pl-c1">6</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
-  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>user_<span class="pl-pds">'</span></span>, LPAD(id, <span class="pl-c1">6</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>), <span class="pl-s"><span class="pl-pds">'</span>@example.com<span class="pl-pds">'</span></span>),
-  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>13<span class="pl-pds">'</span></span>, LPAD(FLOOR(RAND()<span class="pl-k">*</span><span class="pl-c1">100000000</span>), <span class="pl-c1">8</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
-  NOW() <span class="pl-k">-</span> INTERVAL FLOOR(RAND()<span class="pl-k">*</span><span class="pl-c1">365</span>) DAY
-<span class="pl-k">FROM</span> (
-  <span class="pl-k">SELECT</span> @rownum :<span class="pl-k">=</span> @rownum <span class="pl-k">+</span> <span class="pl-c1">1</span> <span class="pl-k">AS</span> id
-  <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> a, <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> b, (<span class="pl-k">SELECT</span> @rownum :<span class="pl-k">=</span> <span class="pl-c1">0</span>) r
-  <span class="pl-k">LIMIT</span> <span class="pl-c1">100000</span>
-) <span class="pl-k">AS</span> temp;
+INSERT INTO users (username, email, phone, created_at)
+SELECT
+  CONCAT('user_', LPAD(id, 6, '0')),
+  CONCAT('user_', LPAD(id, 6, '0'), '@example.com'),
+  CONCAT('13', LPAD(FLOOR(RAND()*100000000), 8, '0')),
+  NOW() - INTERVAL FLOOR(RAND()*365) DAY
+FROM (
+  SELECT @rownum := @rownum + 1 AS id
+  FROM information_schema.COLUMNS a, information_schema.COLUMNS b, (SELECT @rownum := 0) r
+  LIMIT 100000
+) AS temp;
 
-<span class="pl-k">COMMIT</span>;
-</pre></div>
+COMMIT;
+
+</code></pre>
 <p>批量生成 <code class="notranslate">products</code> 数据（1000 条）</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">START TRANSACTION</span>;
+<pre lang="sql" class="notranslate"><code class="notranslate">START TRANSACTION;
 
-<span class="pl-k">INSERT INTO</span> products (name, category, price, stock, created_at)
-<span class="pl-k">SELECT</span>
-  CONCAT(<span class="pl-s"><span class="pl-pds">'</span>商品_<span class="pl-pds">'</span></span>, LPAD(id, <span class="pl-c1">4</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
-  ELT(FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> (RAND() <span class="pl-k">*</span> <span class="pl-c1">5</span>)), <span class="pl-s"><span class="pl-pds">'</span>数码<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>图书<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>服饰<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>家居<span class="pl-pds">'</span></span>, <span class="pl-s"><span class="pl-pds">'</span>食品<span class="pl-pds">'</span></span>),
-  ROUND(<span class="pl-c1">50</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">950</span>, <span class="pl-c1">2</span>),
-  FLOOR(<span class="pl-c1">100</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">900</span>),
-  NOW() <span class="pl-k">-</span> INTERVAL FLOOR(RAND()<span class="pl-k">*</span><span class="pl-c1">180</span>) DAY
-<span class="pl-k">FROM</span> (
-  <span class="pl-k">SELECT</span> @pid :<span class="pl-k">=</span> @pid <span class="pl-k">+</span> <span class="pl-c1">1</span> <span class="pl-k">AS</span> id
-  <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> a, (<span class="pl-k">SELECT</span> @pid :<span class="pl-k">=</span> <span class="pl-c1">0</span>) r
-  <span class="pl-k">LIMIT</span> <span class="pl-c1">1000</span>
-) <span class="pl-k">AS</span> temp;
+INSERT INTO products (name, category, price, stock, created_at)
+SELECT
+  CONCAT('商品_', LPAD(id, 4, '0')),
+  ELT(FLOOR(1 + (RAND() * 5)), '数码', '图书', '服饰', '家居', '食品'),
+  ROUND(50 + RAND() * 950, 2),
+  FLOOR(100 + RAND() * 900),
+  NOW() - INTERVAL FLOOR(RAND()*180) DAY
+FROM (
+  SELECT @pid := @pid + 1 AS id
+  FROM information_schema.COLUMNS a, (SELECT @pid := 0) r
+  LIMIT 1000
+) AS temp;
 
-<span class="pl-k">COMMIT</span>;
-</pre></div>
+COMMIT;
+
+</code></pre>
 <p>批量生成 <code class="notranslate">orders</code> 数据（每用户 1~3 个订单）</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-c"><span class="pl-c">--</span> 模拟循环插入</span>
+<pre lang="sql" class="notranslate"><code class="notranslate">-- 模拟循环插入
 DELIMITER $$
 
 CREATE PROCEDURE generate_orders()
-<span class="pl-k">BEGIN</span>
-  DECLARE i <span class="pl-k">INT</span> DEFAULT <span class="pl-c1">0</span>;
-  WHILE i <span class="pl-k">&lt;</span> <span class="pl-c1">200000</span> DO
-    <span class="pl-k">INSERT INTO</span> orders (user_id, order_no, status, total_amount, created_at)
-    <span class="pl-k">SELECT</span>
-      FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">100000</span>),
-      CONCAT(<span class="pl-s"><span class="pl-pds">'</span>ORD_<span class="pl-pds">'</span></span>, LPAD(FLOOR(RAND() <span class="pl-k">*</span> <span class="pl-c1">10000000</span>), <span class="pl-c1">7</span>, <span class="pl-s"><span class="pl-pds">'</span>0<span class="pl-pds">'</span></span>)),
-      FLOOR(RAND() <span class="pl-k">*</span> <span class="pl-c1">4</span>),
-      ROUND(<span class="pl-c1">50</span> <span class="pl-k">+</span> RAND() <span class="pl-k">*</span> <span class="pl-c1">1000</span>, <span class="pl-c1">2</span>),
-      NOW() <span class="pl-k">-</span> INTERVAL FLOOR(RAND() <span class="pl-k">*</span> <span class="pl-c1">60</span>) DAY;
-    <span class="pl-k">SET</span> i <span class="pl-k">=</span> i <span class="pl-k">+</span> <span class="pl-c1">1</span>;
+BEGIN
+  DECLARE i INT DEFAULT 0;
+  WHILE i &lt; 200000 DO
+    INSERT INTO orders (user_id, order_no, status, total_amount, created_at)
+    SELECT
+      FLOOR(1 + RAND() * 100000),
+      CONCAT('ORD_', LPAD(FLOOR(RAND() * 10000000), 7, '0')),
+      FLOOR(RAND() * 4),
+      ROUND(50 + RAND() * 1000, 2),
+      NOW() - INTERVAL FLOOR(RAND() * 60) DAY;
+    SET i = i + 1;
   END WHILE;
 END$$
 
 DELIMITER ;
 
 CALL generate_orders();
-</pre></div>
+
+</code></pre>
 <p>批量生成 <code class="notranslate">order_items</code> 数据（每订单 1~3 个商品）</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">START TRANSACTION</span>;
+<pre lang="sql" class="notranslate"><code class="notranslate">START TRANSACTION;
 
-<span class="pl-k">INSERT INTO</span> order_items (order_id, product_id, quantity, price)
-<span class="pl-k">SELECT</span>
-  FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> (RAND() <span class="pl-k">*</span> <span class="pl-c1">200000</span>)), <span class="pl-c"><span class="pl-c">--</span> 订单 ID 范围</span>
-  FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> (RAND() <span class="pl-k">*</span> <span class="pl-c1">1000</span>)),   <span class="pl-c"><span class="pl-c">--</span> 商品 ID 范围</span>
-  FLOOR(<span class="pl-c1">1</span> <span class="pl-k">+</span> RAND()<span class="pl-k">*</span><span class="pl-c1">5</span>),
-  ROUND(<span class="pl-c1">50</span> <span class="pl-k">+</span> RAND()<span class="pl-k">*</span><span class="pl-c1">950</span>, <span class="pl-c1">2</span>)
-<span class="pl-k">FROM</span> (
-  <span class="pl-k">SELECT</span> @oiid :<span class="pl-k">=</span> @oiid <span class="pl-k">+</span> <span class="pl-c1">1</span> <span class="pl-k">AS</span> id
-  <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> a, <span class="pl-c1">information_schema</span>.<span class="pl-c1">COLUMNS</span> b, (<span class="pl-k">SELECT</span> @oiid :<span class="pl-k">=</span> <span class="pl-c1">0</span>) r
-  <span class="pl-k">LIMIT</span> <span class="pl-c1">500000</span>
-) <span class="pl-k">AS</span> temp;
+INSERT INTO order_items (order_id, product_id, quantity, price)
+SELECT
+  FLOOR(1 + (RAND() * 200000)), -- 订单 ID 范围
+  FLOOR(1 + (RAND() * 1000)),   -- 商品 ID 范围
+  FLOOR(1 + RAND()*5),
+  ROUND(50 + RAND()*950, 2)
+FROM (
+  SELECT @oiid := @oiid + 1 AS id
+  FROM information_schema.COLUMNS a, information_schema.COLUMNS b, (SELECT @oiid := 0) r
+  LIMIT 500000
+) AS temp;
 
-<span class="pl-k">COMMIT</span>;
-</pre></div>
+COMMIT;
+
+</code></pre>
 <h2>开始测试相关优化项</h2>
 <p>我们尝试执行一下</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate">EXPLAIN <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>1302706965<span class="pl-pds">'</span></span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">EXPLAIN SELECT * FROM users WHERE phone = '1302706965';
+</code></pre>
 <p>发现其执行计划如下：</p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533"><img src="https://github.com/user-attachments/assets/260cd39e-cf04-44d9-99b0-ea111a5f0533" alt="Image" style="max-width: 100%;"></a></p>
 <h3><code class="notranslate">EXPLAIN</code> 字段详细解释</h3>
@@ -817,27 +826,31 @@ CALL generate_orders();
 </tbody>
 </table></markdown-accessiblity-table>
 <p>我们试着给phone添加普通索引再次尝试</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD INDEX idx_phone (phone);
-EXPLAIN <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>1302706965<span class="pl-pds">'</span></span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">ALTER TABLE users ADD INDEX idx_phone (phone);
+EXPLAIN SELECT * FROM users WHERE phone = '1302706965';
+</code></pre>
 <p>添加各种索引的相关语句</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD UNIQUE INDEX idx_email (phone); <span class="pl-c"><span class="pl-c">--</span> 唯一索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD <span class="pl-k">PRIMARY KEY</span> (id);<span class="pl-c"><span class="pl-c">--</span> 主键索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> articles ADD FULLTEXT INDEX idx_content (content); <span class="pl-c"><span class="pl-c">--</span> 全文索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> locations ADD SPATIAL INDEX idx_position (position); <span class="pl-c"><span class="pl-c">--</span> 空间索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD INDEX idx_username_prefix (username(<span class="pl-c1">10</span>)); <span class="pl-c"><span class="pl-c">--</span> 前缀索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> orders ADD INDEX idx_user_product (user_id, product_id); <span class="pl-c"><span class="pl-c">--</span> 复合索引</span></pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">ALTER TABLE users ADD UNIQUE INDEX idx_email (phone); -- 唯一索引
+ALTER TABLE users ADD PRIMARY KEY (id);-- 主键索引
+ALTER TABLE articles ADD FULLTEXT INDEX idx_content (content); -- 全文索引
+ALTER TABLE locations ADD SPATIAL INDEX idx_position (position); -- 空间索引
+ALTER TABLE users ADD INDEX idx_username_prefix (username(10)); -- 前缀索引
+ALTER TABLE orders ADD INDEX idx_user_product (user_id, product_id); -- 复合索引
+</code></pre>
 <p>可以看到执行计划如下：</p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7"><img src="https://github.com/user-attachments/assets/1d48c2fb-7c2d-4cd5-9f60-b6dced4619b7" alt="Image" style="max-width: 100%;"></a></p>
 <p>可以看到其效率有一个质的提升。</p>
 <p>我们接下来试着修改相关查询改为模糊查询，以手机号后四位进行模糊查询：</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate">explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">LIKE</span> <span class="pl-s"><span class="pl-pds">'</span>%6965<span class="pl-pds">'</span></span></pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">explain SELECT * FROM users WHERE phone LIKE '%6965'
+</code></pre>
 <p>执行计划为：</p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541"><img src="https://github.com/user-attachments/assets/695a28ad-1575-4c45-a85c-23b6683c1541" alt="Image" style="max-width: 100%;"></a></p>
 <p>可以看到又再次退化到没有索引的状态，我们试着添加全文索引尝试</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD FULLTEXT INDEX idx_content_phone(phone);
-<span class="pl-k">SELECT</span> phone, MATCH(phone) AGAINST(<span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span>) <span class="pl-k">as</span> score
-<span class="pl-k">FROM</span> users
-<span class="pl-k">WHERE</span> MATCH(phone) AGAINST(<span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span> <span class="pl-k">IN</span> NATURAL LANGUAGE MODE);</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">ALTER TABLE users ADD FULLTEXT INDEX idx_content_phone(phone);
+SELECT phone, MATCH(phone) AGAINST('6965') as score
+FROM users
+WHERE MATCH(phone) AGAINST('6965' IN NATURAL LANGUAGE MODE);
+</code></pre>
 <p>可能会出现查询不到的情况，下面我们来介绍一下全文索引</p>
 <h4><strong>全文索引详解：</strong></h4>
 <p>全文索引（FULLTEXT INDEX）在 MySQL 中是一种特殊索引，专门用于处理<strong>自然语言文本搜索</strong>（如文章内容、评论等）。但它并不是通用优化工具，对于手机号、编码、ID 等结构化字段并不合适。</p>
@@ -1013,30 +1026,35 @@ WHERE MATCH(title, body) AGAINST ('mysql fulltext search' IN NATURAL LANGUAGE MO
 </table></markdown-accessiblity-table>
 <hr>
 <h5>五、配置参考</h5>
-<div class="highlight highlight-source-ini"><pre class="notranslate"><span class="pl-c"><span class="pl-c">#</span> 最小词长度（InnoDB）</span>
-<span class="pl-k">innodb_ft_min_token_size</span> = 2
-<span class="pl-c"><span class="pl-c">#</span> 关闭停用词列表</span>
-<span class="pl-k">innodb_ft_enable_stopword</span> = OFF</pre></div>
+<pre lang="ini" class="notranslate"><code class="notranslate">
+# 最小词长度（InnoDB）
+innodb_ft_min_token_size = 2
+# 关闭停用词列表
+innodb_ft_enable_stopword = OFF
+</code></pre>
 <p>执行后需：</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-c"><span class="pl-c">--</span> 删除旧索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> articles DROP INDEX ft_title;
+<pre lang="sql" class="notranslate"><code class="notranslate">-- 删除旧索引
+ALTER TABLE articles DROP INDEX ft_title;
 
-<span class="pl-c"><span class="pl-c">--</span> 重建索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> articles ADD FULLTEXT(ft_title);</pre></div>
+-- 重建索引
+ALTER TABLE articles ADD FULLTEXT(ft_title);
+</code></pre>
 <p>可见全文索引限制非常多，性能消耗也不小，对于我们上面的查询，我们可以使用一下方法。</p>
 <h4>曲线救国</h4>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-c"><span class="pl-c">--</span> 添加冗余字段</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD COLUMN phone_suffix_right <span class="pl-k">VARCHAR</span>(<span class="pl-c1">10</span>);
-<span class="pl-c"><span class="pl-c">--</span> 设置该字段指，截取phone后四位</span>
-<span class="pl-k">UPDATE</span> users <span class="pl-k">SET</span> phone_suffix_right <span class="pl-k">=</span> RIGHT(phone, <span class="pl-c1">4</span>);
-<span class="pl-c"><span class="pl-c">--</span> 添加索引</span>
-<span class="pl-k">ALTER</span> <span class="pl-k">TABLE</span> users ADD INDEX idx_phone_right (phone_suffix_right);
-<span class="pl-c"><span class="pl-c">--</span> 查看执行计划</span>
-explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone_suffix_right <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>6965<span class="pl-pds">'</span></span></pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">-- 添加冗余字段
+ALTER TABLE users ADD COLUMN phone_suffix_right VARCHAR(10);
+-- 设置该字段指，截取phone后四位
+UPDATE users SET phone_suffix_right = RIGHT(phone, 4);
+-- 添加索引
+ALTER TABLE users ADD INDEX idx_phone_right (phone_suffix_right);
+-- 查看执行计划
+explain SELECT * FROM users WHERE phone_suffix_right = '6965'
+</code></pre>
 <p>执行计划如下：</p>
 <p><a target="_blank" rel="noopener noreferrer" href="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599"><img src="https://github.com/user-attachments/assets/a8e172e7-b302-4ced-9151-921b3b83f599" alt="Image" style="max-width: 100%;"></a></p>
 <h3>范围查询（部分使用索引）</h3>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> created_at <span class="pl-k">&gt;=</span> <span class="pl-s"><span class="pl-pds">'</span>2025-06-01<span class="pl-pds">'</span></span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">SELECT * FROM users WHERE created_at &gt;= '2025-06-01';
+</code></pre>
 <ul>
 <li>命中索引（<code class="notranslate">created_at</code> 上有索引时）；</li>
 <li>查询大范围时仍可能带来大量回表或临时表。</li>
@@ -1048,7 +1066,8 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 <li>覆盖索引最理想：只查索引中的字段。</li>
 </ul>
 <h3>多条件组合（联合索引使用顺序）</h3>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> created_at <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>2025-06-01<span class="pl-pds">'</span></span> <span class="pl-k">AND</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>13900001111<span class="pl-pds">'</span></span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">SELECT * FROM users WHERE created_at = '2025-06-01' AND phone = '13900001111';
+</code></pre>
 <ul>
 <li>若索引为 <code class="notranslate">(created_at, phone)</code> 则命中；</li>
 <li>若顺序反了 <code class="notranslate">(phone, created_at)</code>，可能不命中。</li>
@@ -1059,10 +1078,11 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 <li>使用 <code class="notranslate">EXPLAIN</code> 检查 <code class="notranslate">key</code> 和 <code class="notranslate">rows</code>。</li>
 </ul>
 <h3>JOIN 查询（关联效率分析）</h3>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-c1">o</span>.<span class="pl-c1">id</span>, <span class="pl-c1">u</span>.<span class="pl-c1">username</span>, <span class="pl-c1">o</span>.<span class="pl-c1">total_amount</span>
-<span class="pl-k">FROM</span> orders o
-<span class="pl-k">JOIN</span> users u <span class="pl-k">ON</span> <span class="pl-c1">o</span>.<span class="pl-c1">user_id</span> <span class="pl-k">=</span> <span class="pl-c1">u</span>.<span class="pl-c1">id</span>
-<span class="pl-k">WHERE</span> <span class="pl-c1">o</span>.<span class="pl-c1">created_at</span> <span class="pl-k">&gt;=</span> <span class="pl-s"><span class="pl-pds">'</span>2025-06-01<span class="pl-pds">'</span></span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">SELECT o.id, u.username, o.total_amount
+FROM orders o
+JOIN users u ON o.user_id = u.id
+WHERE o.created_at &gt;= '2025-06-01';
+</code></pre>
 <ul>
 <li>外键字段上需有索引（<code class="notranslate">orders.user_id</code>）。</li>
 <li><code class="notranslate">EXPLAIN</code> 检查 <code class="notranslate">type = ref</code> 或 <code class="notranslate">eq_ref</code>，<code class="notranslate">rows</code> 尽量小。</li>
@@ -1073,13 +1093,15 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 <li>确保 <code class="notranslate">ON</code> 和 <code class="notranslate">WHERE</code> 条件可过滤。</li>
 </ul>
 <h3>聚合查询（索引覆盖优化）</h3>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-c1">COUNT</span>(<span class="pl-k">*</span>) <span class="pl-k">FROM</span> orders <span class="pl-k">WHERE</span> status <span class="pl-k">=</span> <span class="pl-c1">1</span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">SELECT COUNT(*) FROM orders WHERE status = 1;
+</code></pre>
 <ul>
 <li>若 <code class="notranslate">status</code> 有索引，能大幅减少扫描。</li>
 <li>更佳：<code class="notranslate">COUNT(status)</code> + 覆盖索引。</li>
 </ul>
 <h3>分页查询（慢查询常见源头）</h3>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> orders <span class="pl-k">ORDER BY</span> created_at <span class="pl-k">DESC</span> <span class="pl-k">LIMIT</span> <span class="pl-c1">10000</span>, <span class="pl-c1">10</span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">SELECT * FROM orders ORDER BY created_at DESC LIMIT 10000, 10;
+</code></pre>
 <ul>
 <li>大偏移量分页会导致“跳过”前 <code class="notranslate">10000</code> 行记录；</li>
 <li><code class="notranslate">EXPLAIN</code> 显示全表扫描 + filesort。</li>
@@ -1088,10 +1110,11 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 <ul>
 <li>使用“延迟分页”：</li>
 </ul>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> orders
-<span class="pl-k">WHERE</span> id <span class="pl-k">&gt;</span> (<span class="pl-k">SELECT</span> id <span class="pl-k">FROM</span> orders <span class="pl-k">ORDER BY</span> created_at <span class="pl-k">DESC</span> <span class="pl-k">LIMIT</span> <span class="pl-c1">10000</span>, <span class="pl-c1">1</span>)
-<span class="pl-k">ORDER BY</span> created_at <span class="pl-k">DESC</span>
-<span class="pl-k">LIMIT</span> <span class="pl-c1">10</span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">SELECT * FROM orders
+WHERE id &gt; (SELECT id FROM orders ORDER BY created_at DESC LIMIT 10000, 1)
+ORDER BY created_at DESC
+LIMIT 10;
+</code></pre>
 <p>分页的相关优化可参考：<a href="https://mp.weixin.qq.com/s/iyXdKa4mOkqJWN0spN0DLA" rel="nofollow">MySQL分页优化指南：告别LIMIT OFFSET的性能噩梦</a></p>
 <p><a href="https://mp.weixin.qq.com/s/LXvQMQFf_SyLWh1zI6onkA" rel="nofollow">京东面试：mysql深度分页 严重影响性能？根本原因是什么？如何优化？</a></p>
 <p><a href="https://mp.weixin.qq.com/s/3PV5yF0ObuSfnw6pHXtKzA" rel="nofollow">史上最全MySQL各种锁详解</a></p>
@@ -1109,7 +1132,8 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 <p>查询所需的所有字段都<strong>包含在一个索引中</strong>，则称为“覆盖索引”，此时<strong>不需要回表</strong>，可以直接从索引中返回结果。</p>
 <h2>三、如何查看是否发生了回表？</h2>
 <h3>使用 <code class="notranslate">EXPLAIN</code> 看执行计划的 <code class="notranslate">Extra</code> 字段：</h3>
-<div class="highlight highlight-source-sql"><pre class="notranslate">EXPLAIN <span class="pl-k">SELECT</span> name <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>13912345678<span class="pl-pds">'</span></span>;</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">EXPLAIN SELECT name FROM users WHERE phone = '13912345678';
+</code></pre>
 <markdown-accessiblity-table><table role="table">
 <thead>
 <tr>
@@ -1170,9 +1194,10 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 </table></markdown-accessiblity-table>
 <p>终极手段</p>
 <p>MySQL 5.7+ 支持优化器 trace：</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">SET</span> optimizer_trace<span class="pl-k">=</span><span class="pl-s"><span class="pl-pds">"</span>enabled=on<span class="pl-pds">"</span></span>,end_markers_in_json<span class="pl-k">=</span><span class="pl-k">on</span>;
-<span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> users <span class="pl-k">WHERE</span> phone <span class="pl-k">=</span> <span class="pl-s"><span class="pl-pds">'</span>1353526525<span class="pl-pds">'</span></span>;
-<span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class="pl-k">FROM</span> <span class="pl-c1">information_schema</span>.<span class="pl-c1">optimizer_trace</span>\G</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">SET optimizer_trace="enabled=on",end_markers_in_json=on;
+SELECT * FROM users WHERE phone = '1353526525';
+SELECT * FROM information_schema.optimizer_trace\G
+</code></pre>
 <p>可以在 <code class="notranslate">index_condition_pushdown</code> 和 <code class="notranslate">rowid lookup</code> 等字段中看到是否有回表行为。</p>
 <h2>四、如何避免回表？</h2>
 <markdown-accessiblity-table><table role="table">
@@ -1291,13 +1316,15 @@ explain <span class="pl-k">SELECT</span> <span class="pl-k">*</span> <span class
 <li>
 <p><strong>最左前缀原则：</strong><br>
 覆盖索引也遵循最左匹配规则，字段顺序必须优化。</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">INDEX</span> <span class="pl-en">idx_email_username</span> <span class="pl-k">ON</span> users(email, username);
-<span class="pl-c"><span class="pl-c">--</span> 支持：email = ? AND username = ?</span>
-<span class="pl-c"><span class="pl-c">--</span> 不支持：username = ? （email 未使用，无法命中）</span></pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">CREATE INDEX idx_email_username ON users(email, username);
+-- 支持：email = ? AND username = ?
+-- 不支持：username = ? （email 未使用，无法命中）
+</code></pre>
 </li>
 <li>
 <p><strong>将常用的查询字段加入联合索引末尾</strong>：</p>
-<div class="highlight highlight-source-sql"><pre class="notranslate"><span class="pl-k">CREATE</span> <span class="pl-k">INDEX</span> <span class="pl-en">idx_email_username_id</span> <span class="pl-k">ON</span> users(email, username, id);</pre></div>
+<pre lang="sql" class="notranslate"><code class="notranslate">CREATE INDEX idx_email_username_id ON users(email, username, id);
+</code></pre>
 </li>
 <li>
 <p><strong>避免过多字段索引：</strong><br>
