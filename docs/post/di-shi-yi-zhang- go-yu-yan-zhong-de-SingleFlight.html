@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<html data-color-mode="light" data-dark-theme="dark" data-light-theme="light" lang="zh-CN">
+<head>
+    <meta content="text/html; charset=utf-8" http-equiv="content-type" />
+    <meta name="viewport" content="width=device-width,initial-scale=1.0">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <link href='https://mirrors.sustech.edu.cn/cdnjs/ajax/libs/Primer/21.0.7/primer.css' rel='stylesheet' />
+    <script src='https://blog.meekdai.com/Gmeek/plugins/GmeekVercount.js'></script>
+    <link rel="icon" href="https://avatars.githubusercontent.com/u/59826062?v=4"><script>
+        let theme = localStorage.getItem("meek_theme") || "light";
+        document.documentElement.setAttribute("data-color-mode", theme);
+    </script>
+<meta name="description" content="### SingleFlight是什么
+
+在go语言当中是一个并发去重工具，当多个goroutine同一时刻请求”同一个key对应操作时“，保证只让**其中一个执行**，其他请求等待其中一个出结构后，复用改次请求的结果。">
+<meta property="og:title" content="第十一章 go语言中的SingleFlight">
+<meta property="og:description" content="### SingleFlight是什么
+
+在go语言当中是一个并发去重工具，当多个goroutine同一时刻请求”同一个key对应操作时“，保证只让**其中一个执行**，其他请求等待其中一个出结构后，复用改次请求的结果。">
+<meta property="og:type" content="article">
+<meta property="og:url" content="https://jhy-hong.github.io/post/di-shi-yi-zhang-%20go-yu-yan-zhong-de-SingleFlight.html">
+<meta property="og:image" content="https://avatars.githubusercontent.com/u/59826062?v=4">
+<title>第十一章 go语言中的SingleFlight</title>
+<link href="//unpkg.com/@wooorm/starry-night@2.1.1/style/both.css" rel="stylesheet" />
+
+
+</head>
+<style>
+body{box-sizing: border-box;min-width: 200px;max-width: 900px;margin: 20px auto;padding: 45px;font-size: 16px;font-family: sans-serif;line-height: 1.25;}
+#header{display:flex;padding-bottom:8px;border-bottom: 1px solid var(--borderColor-muted, var(--color-border-muted));margin-bottom: 16px;}
+#footer {margin-top:64px; text-align: center;font-size: small;}
+
+</style>
+
+<style>
+.postTitle{margin: auto 0;font-size:40px;font-weight:bold;}
+.title-right{display:flex;margin:auto 0 0 auto;}
+.title-right .circle{padding: 14px 16px;margin-right:8px;}
+#postBody{border-bottom: 1px solid var(--color-border-default);padding-bottom:36px;}
+#postBody hr{height:2px;}
+#cmButton{height:48px;margin-top:48px;}
+#comments{margin-top:64px;}
+.g-emoji{font-size:24px;}
+@media (max-width: 600px) {
+    body {padding: 8px;}
+    .postTitle{font-size:24px;}
+}
+.copy-feedback {
+    display: none;
+    position: absolute;
+    top: 10px;
+    right: 50px;
+    color: var(--color-fg-on-emphasis);
+    background-color: var(--color-fg-muted);
+    border-radius: 3px;
+    padding: 5px 8px;
+    font-size: 12px;
+}
+</style>
+
+
+
+
+<body>
+    <div id="header">
+<h1 class="postTitle">第十一章 go语言中的SingleFlight</h1>
+<div class="title-right">
+    <a href="https://jhy-hong.github.io" id="buttonHome" class="btn btn-invisible circle" title="首页">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathHome" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+    <a href="https://github.com/jhy-hong/jhy-hong.github.io/issues/17" target="_blank" class="btn btn-invisible circle" title="Issue">
+        <svg class="octicon" width="16" height="16">
+            <path id="pathIssue" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+    
+
+    <a class="btn btn-invisible circle" onclick="modeSwitch();" title="切换主题">
+        <svg class="octicon" width="16" height="16" >
+            <path id="themeSwitch" fill-rule="evenodd"></path>
+        </svg>
+    </a>
+
+</div>
+</div>
+    <div id="content">
+<div class="markdown-body" id="postBody"><h3>SingleFlight是什么</h3>
+<p>在go语言当中是一个并发去重工具，当多个goroutine同一时刻请求”同一个key对应操作时“，保证只让<strong>其中一个执行</strong>，其他请求等待其中一个出结构后，复用改次请求的结果。这样可以减少并发处理的数量。</p>
+<p>主要用于合并并发请求的场景中，比如缓存场景的缓存击穿/热点key等。</p>
+<p>它是go语言开发组提供的一个扩展并发原语，其需要 go get golang.org/x/sync/singleflight</p>
+<h3>SingleFlight对外api</h3>
+<p>Go 里最常用的是这个包：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">import</span> <span class="pl-s">"golang.org/x/sync/singleflight"</span></pre></div>
+<p>它最核心的类型是 <code class="notranslate">Group</code>，核心方法有 3 个：</p>
+<ul>
+<li><code class="notranslate">Do(key, fn)</code>：同步执行，同 key 并发请求只执行一次</li>
+<li><code class="notranslate">DoChan(key, fn)</code>：异步方式拿结果</li>
+<li><code class="notranslate">Forget(key)</code>：忘掉某个 key，让后续请求不再复用当前正在进行中的调用</li>
+</ul>
+<p>官方签名大致如下：</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">func</span> (<span class="pl-s1">g</span> <span class="pl-c1">*</span><span class="pl-smi">Group</span>) <span class="pl-c1">Do</span>(<span class="pl-s1">key</span> <span class="pl-smi">string</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>() (<span class="pl-smi">any</span>, <span class="pl-smi">error</span>)) (<span class="pl-s1">v</span> <span class="pl-smi">any</span>, <span class="pl-s1">err</span> <span class="pl-smi">error</span>, <span class="pl-s1">shared</span> <span class="pl-smi">bool</span>)
+<span class="pl-k">func</span> (<span class="pl-s1">g</span> <span class="pl-c1">*</span><span class="pl-smi">Group</span>) <span class="pl-c1">DoChan</span>(<span class="pl-s1">key</span> <span class="pl-smi">string</span>, <span class="pl-s1">fn</span> <span class="pl-k">func</span>() (<span class="pl-smi">any</span>, <span class="pl-smi">error</span>)) <span class="pl-c1">&lt;-</span><span class="pl-k">chan</span> <span class="pl-smi">Result</span>
+<span class="pl-k">func</span> (<span class="pl-s1">g</span> <span class="pl-c1">*</span><span class="pl-smi">Group</span>) <span class="pl-c1">Forget</span>(<span class="pl-s1">key</span> <span class="pl-smi">string</span>)</pre></div>
+<p>其中 <code class="notranslate">shared</code> 很关键：<br>
+如果返回 <code class="notranslate">shared == true</code>，表示<strong>这次结果被多个调用共享了</strong>；如果是 <code class="notranslate">false</code>，通常表示这次是“真正执行者”或者没有发生并发复用。</p>
+<h3>使用举例</h3>
+<ul>
+<li>
+<p>ex1</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+	<span class="pl-s">"fmt"</span>
+	<span class="pl-s">"golang.org/x/sync/singleflight"</span>
+	<span class="pl-s">"sync"</span>
+	<span class="pl-s">"time"</span>
+)
+
+<span class="pl-k">var</span> <span class="pl-s1">g</span> singleflight.<span class="pl-smi">Group</span>
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+	<span class="pl-k">var</span> <span class="pl-s1">wg</span> sync.<span class="pl-smi">WaitGroup</span>
+
+	<span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+		<span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>)
+		<span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">i</span> <span class="pl-smi">int</span>) {
+			<span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>()
+
+			<span class="pl-s1">v</span>, <span class="pl-s1">_</span>, <span class="pl-s1">shared</span> <span class="pl-c1">:=</span> <span class="pl-s1">g</span>.<span class="pl-c1">Do</span>(<span class="pl-s">"user:1001"</span>, <span class="pl-k">func</span>() (<span class="pl-k">interface</span>{}, <span class="pl-smi">error</span>) {
+				<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"query DB..."</span>)
+				<span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+				<span class="pl-k">return</span> <span class="pl-s">"user-data"</span>, <span class="pl-c1">nil</span>
+			})
+
+			<span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"goroutine %d got: %v, shared=%v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">i</span>, <span class="pl-s1">v</span>, <span class="pl-s1">shared</span>)
+		}(<span class="pl-s1">i</span>)
+	}
+
+	<span class="pl-s1">wg</span>.<span class="pl-c1">Wait</span>()
+}</pre></div>
+</li>
+<li>
+<p>ex2</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">package</span> main
+
+<span class="pl-k">import</span> (
+	<span class="pl-s">"fmt"</span>
+	<span class="pl-s">"golang.org/x/sync/singleflight"</span>
+	<span class="pl-s">"sync"</span>
+	<span class="pl-s">"time"</span>
+)
+
+<span class="pl-k">func</span> <span class="pl-s1">main</span>() {
+	<span class="pl-k">var</span> <span class="pl-s1">g</span> singleflight.<span class="pl-smi">Group</span>
+	<span class="pl-k">var</span> <span class="pl-s1">wg</span> sync.<span class="pl-smi">WaitGroup</span>
+
+	<span class="pl-s1">fn</span> <span class="pl-c1">:=</span> <span class="pl-k">func</span>() (<span class="pl-smi">any</span>, <span class="pl-smi">error</span>) {
+		<span class="pl-s1">fmt</span>.<span class="pl-c1">Println</span>(<span class="pl-s">"真实执行一次"</span>)
+		<span class="pl-s1">time</span>.<span class="pl-c1">Sleep</span>(<span class="pl-c1">2</span> <span class="pl-c1">*</span> <span class="pl-s1">time</span>.<span class="pl-c1">Second</span>)
+		<span class="pl-k">return</span> <span class="pl-s">"hello"</span>, <span class="pl-c1">nil</span>
+	}
+
+	<span class="pl-k">for</span> <span class="pl-s1">i</span> <span class="pl-c1">:=</span> <span class="pl-c1">0</span>; <span class="pl-s1">i</span> <span class="pl-c1">&lt;</span> <span class="pl-c1">5</span>; <span class="pl-s1">i</span><span class="pl-c1">++</span> {
+		<span class="pl-s1">wg</span>.<span class="pl-c1">Add</span>(<span class="pl-c1">1</span>)
+		<span class="pl-k">go</span> <span class="pl-k">func</span>(<span class="pl-s1">idx</span> <span class="pl-smi">int</span>) {
+			<span class="pl-k">defer</span> <span class="pl-s1">wg</span>.<span class="pl-c1">Done</span>()
+
+			<span class="pl-s1">v</span>, <span class="pl-s1">err</span>, <span class="pl-s1">shared</span> <span class="pl-c1">:=</span> <span class="pl-s1">g</span>.<span class="pl-c1">Do</span>(<span class="pl-s">"user:1001"</span>, <span class="pl-s1">fn</span>)
+			<span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+				<span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"goroutine=%d err=%v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">idx</span>, <span class="pl-s1">err</span>)
+				<span class="pl-k">return</span>
+			}
+
+			<span class="pl-s1">fmt</span>.<span class="pl-c1">Printf</span>(<span class="pl-s">"goroutine=%d val=%v shared=%v<span class="pl-cce">\n</span>"</span>, <span class="pl-s1">idx</span>, <span class="pl-s1">v</span>, <span class="pl-s1">shared</span>)
+		}(<span class="pl-s1">i</span>)
+	}
+
+	<span class="pl-s1">wg</span>.<span class="pl-c1">Wait</span>()
+}</pre></div>
+</li>
+</ul>
+<h3>解决的问题</h3>
+<h4>缓存击穿 / 热点 Key 并发回源</h4>
+<p>例如某个热门商品详情缓存失效，瞬间 5000 个请求同时打到数据库：</p>
+<ul>
+<li>没有 SingleFlight：5000 个请求都查 DB</li>
+<li>有 SingleFlight：同一个商品 ID 只查 1 次 DB，其他请求等结果复用</li>
+</ul>
+<p>这就是典型的 <strong>thundering herd problem（惊群 / herd effect）</strong> 场景，SingleFlight 很适合处理。第三方相关实现文档也明确把它描述为对该问题的处理方式。</p>
+<h4>防止重复构建昂贵对象</h4>
+<p>例如：</p>
+<ul>
+<li>初始化某个大配置</li>
+<li>拉取某个远端接口数据</li>
+<li>动态生成报表</li>
+<li>加载某个模型/词典/规则文件</li>
+<li>刷新某个租户配置</li>
+</ul>
+<p>同一时刻如果很多请求都在做同样的事，SingleFlight 可以只做一次。</p>
+<h4>降低下游压力</h4>
+<p>它常被用于保护：</p>
+<ul>
+<li>MySQL / PostgreSQL</li>
+<li>Redis miss 后的 DB 回源</li>
+<li>第三方 API</li>
+<li>配置中心</li>
+<li>文件系统 / 对象存储</li>
+<li>微服务间的热点查询接口</li>
+</ul>
+<h3><code class="notranslate">Do</code> 的语义怎么理解</h3>
+<p><code class="notranslate">Do</code> 的核心流程可以理解为：</p>
+<ol>
+<li>先根据 <code class="notranslate">key</code> 查当前是否已有相同任务在执行</li>
+<li>如果有，当前请求不再执行 <code class="notranslate">fn</code>，而是等待已有任务完成</li>
+<li>如果没有，当前请求成为“首个执行者”，真正执行 <code class="notranslate">fn</code></li>
+<li>执行结束后，把结果广播给所有等待者</li>
+<li>当前 key 的这次 in-flight 状态被移除</li>
+</ol>
+<p>也就是说，SingleFlight 只对**“同一时刻正在飞行中的相同请求”<strong>去重。<br>
+它</strong>不会缓存历史结果**。一次执行结束后，下一波请求还会重新执行。这个特性从官方文档的“duplicate suppression”而不是“cache”也能看出来。</p>
+<h4>不是缓存</h4>
+<markdown-accessiblity-table><table role="table">
+<thead>
+<tr>
+<th>对比项</th>
+<th>SingleFlight</th>
+<th>缓存</th>
+</tr>
+</thead>
+<tbody>
+<tr>
+<td>作用</td>
+<td>合并并发中的重复请求</td>
+<td>复用历史结果</td>
+</tr>
+<tr>
+<td>生命周期</td>
+<td>只在请求执行期间有效</td>
+<td>直到过期/淘汰</td>
+</tr>
+<tr>
+<td>是否减少后续请求执行</td>
+<td>只能减少同一时刻的重复执行</td>
+<td>可以减少后续很长时间的执行</td>
+</tr>
+<tr>
+<td>是否适合单独使用</td>
+<td>可用，但效果有限</td>
+<td>常与 SingleFlight 配合更强</td>
+</tr>
+</tbody>
+</table></markdown-accessiblity-table>
+<h3>典型正确组合</h3>
+<p>最常见的生产写法是：</p>
+<p><strong>本地缓存 / Redis 缓存 + SingleFlight + DB/远端服务</strong></p>
+<p>流程通常是：</p>
+<pre class="notranslate"><code class="notranslate">请求到来
+   ↓
+先查缓存
+   ↓
+缓存命中 → 直接返回
+   ↓
+缓存未命中
+   ↓
+进入 singleflight.Do(key, fn)
+   ↓
+只有一个请求真正回源
+   ↓
+查库/查远端
+   ↓
+写入缓存
+   ↓
+所有并发请求共享结果
+</code></pre>
+<h3>最常见的用法</h3>
+<h4>场景一：缓存击穿保护</h4>
+<p><strong>场景描述</strong></p>
+<p>商品详情 <code class="notranslate">product:123</code> 是热点数据，Redis 过期的一瞬间有大量请求同时到来。</p>
+<p>实现</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">Product</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">ID</span>   <span class="pl-smi">int64</span>
+	<span class="pl-c1">Name</span> <span class="pl-smi">string</span>
+}
+
+<span class="pl-k">type</span> <span class="pl-smi">ProductService</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">sf</span> singleflight.<span class="pl-smi">Group</span>
+	<span class="pl-c">// cache redis/local cache</span>
+	<span class="pl-c">// repo  db access</span>
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">s</span> <span class="pl-c1">*</span><span class="pl-smi">ProductService</span>) <span class="pl-c1">GetProduct</span>(<span class="pl-s1">productID</span> <span class="pl-smi">int64</span>) (<span class="pl-c1">*</span><span class="pl-smi">Product</span>, <span class="pl-smi">error</span>) {
+	<span class="pl-s1">cacheKey</span> <span class="pl-c1">:=</span> <span class="pl-s1">fmt</span>.<span class="pl-c1">Sprintf</span>(<span class="pl-s">"product:%d"</span>, <span class="pl-s1">productID</span>)
+
+	<span class="pl-c">// 1. 先查缓存</span>
+	<span class="pl-k">if</span> <span class="pl-s1">p</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">s</span>.<span class="pl-c1">getFromCache</span>(<span class="pl-s1">cacheKey</span>); <span class="pl-s1">ok</span> {
+		<span class="pl-k">return</span> <span class="pl-s1">p</span>, <span class="pl-c1">nil</span>
+	}
+
+	<span class="pl-c">// 2. 缓存 miss，进入 singleflight</span>
+	<span class="pl-s1">v</span>, <span class="pl-s1">err</span>, <span class="pl-s1">shared</span> <span class="pl-c1">:=</span> <span class="pl-s1">s</span>.<span class="pl-c1">sf</span>.<span class="pl-c1">Do</span>(<span class="pl-s1">cacheKey</span>, <span class="pl-k">func</span>() (<span class="pl-smi">any</span>, <span class="pl-smi">error</span>) {
+		<span class="pl-c">// 双检，防止等待期间别的协程已写入缓存</span>
+		<span class="pl-k">if</span> <span class="pl-s1">p</span>, <span class="pl-s1">ok</span> <span class="pl-c1">:=</span> <span class="pl-s1">s</span>.<span class="pl-c1">getFromCache</span>(<span class="pl-s1">cacheKey</span>); <span class="pl-s1">ok</span> {
+			<span class="pl-k">return</span> <span class="pl-s1">p</span>, <span class="pl-c1">nil</span>
+		}
+
+		<span class="pl-s1">p</span>, <span class="pl-s1">err</span> <span class="pl-c1">:=</span> <span class="pl-s1">s</span>.<span class="pl-c1">queryProductFromDB</span>(<span class="pl-s1">productID</span>)
+		<span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+			<span class="pl-k">return</span> <span class="pl-c1">nil</span>, <span class="pl-s1">err</span>
+		}
+
+		<span class="pl-s1">s</span>.<span class="pl-c1">setCache</span>(<span class="pl-s1">cacheKey</span>, <span class="pl-s1">p</span>)
+		<span class="pl-k">return</span> <span class="pl-s1">p</span>, <span class="pl-c1">nil</span>
+	})
+
+	<span class="pl-s1">_</span> <span class="pl-c1">=</span> <span class="pl-s1">shared</span> <span class="pl-c">// 可以做监控</span>
+	<span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+		<span class="pl-k">return</span> <span class="pl-c1">nil</span>, <span class="pl-s1">err</span>
+	}
+	<span class="pl-k">return</span> <span class="pl-s1">v</span>.(<span class="pl-c1">*</span><span class="pl-smi">Product</span>), <span class="pl-c1">nil</span>
+}</pre></div>
+<p>缓存 miss 后，同一个 <code class="notranslate">product:123</code> 的并发请求会被合并成一次 DB 查询。</p>
+<p>价值：</p>
+<ul>
+<li>
+<p>避免 Redis 过期瞬间把 DB 打垮</p>
+</li>
+<li>
+<p>降低 MySQL QPS 尖峰</p>
+</li>
+<li>
+<p>降低 P99 延迟抖动</p>
+</li>
+</ul>
+<h4>场景二：第三方接口去重调用</h4>
+<p><strong>场景描述</strong></p>
+<p>比如支付、物流、风控、画像服务，有些查询接口昂贵且限频：</p>
+<ul>
+<li>查询用户风控画像</li>
+<li>查询快递轨迹</li>
+<li>查询支付订单状态</li>
+</ul>
+<p>同一时刻很多业务线程都在查同一个订单状态，其实只需要查一次。</p>
+<p>实现示例</p>
+<div class="highlight highlight-source-go"><pre class="notranslate"><span class="pl-k">type</span> <span class="pl-smi">OrderStatus</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">OrderID</span> <span class="pl-smi">string</span>
+	<span class="pl-c1">Status</span>  <span class="pl-smi">string</span>
+}
+
+<span class="pl-k">type</span> <span class="pl-smi">OrderService</span> <span class="pl-k">struct</span> {
+	<span class="pl-c1">sf</span> singleflight.<span class="pl-smi">Group</span>
+}
+
+<span class="pl-k">func</span> (<span class="pl-s1">s</span> <span class="pl-c1">*</span><span class="pl-smi">OrderService</span>) <span class="pl-c1">QueryOrderStatus</span>(<span class="pl-s1">orderID</span> <span class="pl-smi">string</span>) (<span class="pl-c1">*</span><span class="pl-smi">OrderStatus</span>, <span class="pl-smi">error</span>) {
+	<span class="pl-s1">key</span> <span class="pl-c1">:=</span> <span class="pl-s">"order_status:"</span> <span class="pl-c1">+</span> <span class="pl-s1">orderID</span>
+
+	<span class="pl-s1">v</span>, <span class="pl-s1">err</span>, <span class="pl-s1">_</span> <span class="pl-c1">:=</span> <span class="pl-s1">s</span>.<span class="pl-c1">sf</span>.<span class="pl-c1">Do</span>(<span class="pl-s1">key</span>, <span class="pl-k">func</span>() (<span class="pl-smi">any</span>, <span class="pl-smi">error</span>) {
+		<span class="pl-c">// 这里调用第三方接口</span>
+		<span class="pl-k">return</span> <span class="pl-s1">s</span>.<span class="pl-c1">queryFromRemote</span>(<span class="pl-s1">orderID</span>)
+	})
+	<span class="pl-k">if</span> <span class="pl-s1">err</span> <span class="pl-c1">!=</span> <span class="pl-c1">nil</span> {
+		<span class="pl-k">return</span> <span class="pl-c1">nil</span>, <span class="pl-s1">err</span>
+	}
+	<span class="pl-k">return</span> <span class="pl-s1">v</span>.(<span class="pl-c1">*</span><span class="pl-smi">OrderStatus</span>), <span class="pl-c1">nil</span>
+}</pre></div>
+<p>使用价值：</p>
+<ul>
+<li>降低第三方 API 调用成本</li>
+<li>防止触发对方限流</li>
+<li>避免自己线程池/连接池被重复调用拖满</li>
+</ul></div>
+<div style="font-size:small;margin-top:8px;float:right;"></div>
+
+<button class="btn btn-block" type="button" onclick="openComments()" id="cmButton">评论</button>
+<div class="comments" id="comments"></div>
+
+</div>
+    <div id="footer"><div id="footer1">Copyright © <span id="copyrightYear"></span> <a href="https://jhy-hong.github.io">宏渊的技术博客</a></div>
+<div id="footer2">
+    <span id="runday"></span><span>Powered by <a href="https://meekdai.com/Gmeek.html" target="_blank">Gmeek</a></span>
+</div>
+
+<script>
+var now=new Date();
+document.getElementById("copyrightYear").innerHTML=now.getFullYear();
+
+if(""!=""){
+    var startSite=new Date("");
+    var diff=now.getTime()-startSite.getTime();
+    var diffDay=Math.floor(diff/(1000*60*60*24));
+    document.getElementById("runday").innerHTML="网站运行 "+diffDay+" 天"+" • ";
+}
+</script></div>
+</body>
+<script>
+var IconList={'sun': 'M8 10.5a2.5 2.5 0 100-5 2.5 2.5 0 000 5zM8 12a4 4 0 100-8 4 4 0 000 8zM8 0a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0V.75A.75.75 0 018 0zm0 13a.75.75 0 01.75.75v1.5a.75.75 0 01-1.5 0v-1.5A.75.75 0 018 13zM2.343 2.343a.75.75 0 011.061 0l1.06 1.061a.75.75 0 01-1.06 1.06l-1.06-1.06a.75.75 0 010-1.06zm9.193 9.193a.75.75 0 011.06 0l1.061 1.06a.75.75 0 01-1.06 1.061l-1.061-1.06a.75.75 0 010-1.061zM16 8a.75.75 0 01-.75.75h-1.5a.75.75 0 010-1.5h1.5A.75.75 0 0116 8zM3 8a.75.75 0 01-.75.75H.75a.75.75 0 010-1.5h1.5A.75.75 0 013 8zm10.657-5.657a.75.75 0 010 1.061l-1.061 1.06a.75.75 0 11-1.06-1.06l1.06-1.06a.75.75 0 011.06 0zm-9.193 9.193a.75.75 0 010 1.06l-1.06 1.061a.75.75 0 11-1.061-1.06l1.06-1.061a.75.75 0 011.061 0z', 'moon': 'M9.598 1.591a.75.75 0 01.785-.175 7 7 0 11-8.967 8.967.75.75 0 01.961-.96 5.5 5.5 0 007.046-7.046.75.75 0 01.175-.786zm1.616 1.945a7 7 0 01-7.678 7.678 5.5 5.5 0 107.678-7.678z', 'sync': 'M1.705 8.005a.75.75 0 0 1 .834.656 5.5 5.5 0 0 0 9.592 2.97l-1.204-1.204a.25.25 0 0 1 .177-.427h3.646a.25.25 0 0 1 .25.25v3.646a.25.25 0 0 1-.427.177l-1.38-1.38A7.002 7.002 0 0 1 1.05 8.84a.75.75 0 0 1 .656-.834ZM8 2.5a5.487 5.487 0 0 0-4.131 1.869l1.204 1.204A.25.25 0 0 1 4.896 6H1.25A.25.25 0 0 1 1 5.75V2.104a.25.25 0 0 1 .427-.177l1.38 1.38A7.002 7.002 0 0 1 14.95 7.16a.75.75 0 0 1-1.49.178A5.5 5.5 0 0 0 8 2.5Z', 'home': 'M6.906.664a1.749 1.749 0 0 1 2.187 0l5.25 4.2c.415.332.657.835.657 1.367v7.019A1.75 1.75 0 0 1 13.25 15h-3.5a.75.75 0 0 1-.75-.75V9H7v5.25a.75.75 0 0 1-.75.75h-3.5A1.75 1.75 0 0 1 1 13.25V6.23c0-.531.242-1.034.657-1.366l5.25-4.2Zm1.25 1.171a.25.25 0 0 0-.312 0l-5.25 4.2a.25.25 0 0 0-.094.196v7.019c0 .138.112.25.25.25H5.5V8.25a.75.75 0 0 1 .75-.75h3.5a.75.75 0 0 1 .75.75v5.25h2.75a.25.25 0 0 0 .25-.25V6.23a.25.25 0 0 0-.094-.195Z', 'github': 'M8 0c4.42 0 8 3.58 8 8a8.013 8.013 0 0 1-5.45 7.59c-.4.08-.55-.17-.55-.38 0-.27.01-1.13.01-2.2 0-.75-.25-1.23-.54-1.48 1.78-.2 3.65-.88 3.65-3.95 0-.88-.31-1.59-.82-2.15.08-.2.36-1.02-.08-2.12 0 0-.67-.22-2.2.82-.64-.18-1.32-.27-2-.27-.68 0-1.36.09-2 .27-1.53-1.03-2.2-.82-2.2-.82-.44 1.1-.16 1.92-.08 2.12-.51.56-.82 1.28-.82 2.15 0 3.06 1.86 3.75 3.64 3.95-.23.2-.44.55-.51 1.07-.46.21-1.61.55-2.33-.66-.15-.24-.6-.83-1.23-.82-.67.01-.27.38.01.53.34.19.73.9.82 1.13.16.45.68 1.31 2.69.94 0 .67.01 1.3.01 1.49 0 .21-.15.45-.55.38A7.995 7.995 0 0 1 0 8c0-4.42 3.58-8 8-8Z', 'copy': 'M0 6.75C0 5.784.784 5 1.75 5h1.5a.75.75 0 0 1 0 1.5h-1.5a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-1.5a.75.75 0 0 1 1.5 0v1.5A1.75 1.75 0 0 1 9.25 16h-7.5A1.75 1.75 0 0 1 0 14.25Z M5 1.75C5 .784 5.784 0 6.75 0h7.5C15.216 0 16 .784 16 1.75v7.5A1.75 1.75 0 0 1 14.25 11h-7.5A1.75 1.75 0 0 1 5 9.25Zm1.75-.25a.25.25 0 0 0-.25.25v7.5c0 .138.112.25.25.25h7.5a.25.25 0 0 0 .25-.25v-7.5a.25.25 0 0 0-.25-.25Z', 'check': 'M13.78 4.22a.75.75 0 0 1 0 1.06l-7.25 7.25a.75.75 0 0 1-1.06 0L2.22 9.28a.751.751 0 0 1 .018-1.042.751.751 0 0 1 1.042-.018L6 10.94l6.72-6.72a.75.75 0 0 1 1.06 0Z'};
+var utterancesLoad=0;
+
+let themeSettings={
+    "dark": ["dark","moon","#00f0ff","dark-blue"],
+    "light": ["light","sun","#ff5000","github-light"],
+    "auto": ["auto","sync","","preferred-color-scheme"]
+};
+function changeTheme(mode, icon, color, utheme){
+    document.documentElement.setAttribute("data-color-mode",mode);
+    document.getElementById("themeSwitch").setAttribute("d",value=IconList[icon]);
+    document.getElementById("themeSwitch").parentNode.style.color=color;
+    if(utterancesLoad==1){utterancesTheme(utheme);}
+}
+function modeSwitch(){
+    let currentMode=document.documentElement.getAttribute('data-color-mode');
+    let newMode = currentMode === "light" ? "dark" : currentMode === "dark" ? "auto" : "light";
+    localStorage.setItem("meek_theme", newMode);
+    if(themeSettings[newMode]){
+        changeTheme(...themeSettings[newMode]);
+    }
+}
+function utterancesTheme(theme){
+    const message={type:'set-theme',theme: theme};
+    const iframe=document.getElementsByClassName('utterances-frame')[0];
+    iframe.contentWindow.postMessage(message,'https://utteranc.es');
+}
+if(themeSettings[theme]){changeTheme(...themeSettings[theme]);}
+console.log("\n %c Gmeek last https://github.com/Meekdai/Gmeek \n","padding:5px 0;background:#02d81d;color:#fff");
+</script>
+
+<script>
+document.getElementById("pathHome").setAttribute("d",IconList["home"]);
+document.getElementById("pathIssue").setAttribute("d",IconList["github"]);
+
+
+
+function openComments(){
+    cm=document.getElementById("comments");
+    cmButton=document.getElementById("cmButton");
+    cmButton.disabled=true;
+    cmButton.innerHTML="loading";
+    span=document.createElement("span");
+    span.setAttribute("class","AnimatedEllipsis");
+    cmButton.appendChild(span);
+
+    script=document.createElement("script");
+    script.setAttribute("src","https://utteranc.es/client.js");
+    script.setAttribute("repo","jhy-hong/jhy-hong.github.io");
+    script.setAttribute("issue-term","title");
+    
+    if(localStorage.getItem("meek_theme")=="dark"){script.setAttribute("theme","dark-blue");}
+    else if(localStorage.getItem("meek_theme")=="light") {script.setAttribute("theme","github-light");}
+    else{script.setAttribute("theme","preferred-color-scheme");}
+    
+    script.setAttribute("crossorigin","anonymous");
+    script.setAttribute("async","");
+    cm.appendChild(script);
+
+    int=self.setInterval("iFrameLoading()",200);
+}
+
+function iFrameLoading(){
+    var utterances=document.getElementsByClassName('utterances');
+    if(utterances.length==1){
+        if(utterances[0].style.height!=""){
+            utterancesLoad=1;
+            int=window.clearInterval(int);
+            document.getElementById("cmButton").style.display="none";
+            console.log("utterances Load OK");
+        }
+    }
+}
+
+document.addEventListener('DOMContentLoaded', () => {
+    const createClipboardHTML = (codeContent, additionalClasses = '') => `
+        <pre class="notranslate"><code class="notranslate">${codeContent}</code></pre>
+        <div class="clipboard-container position-absolute right-0 top-0 ${additionalClasses}">
+            <clipboard-copy class="ClipboardButton btn m-2 p-0" role="button" style="display: inherit;">
+                <svg height="16" width="16" class="octicon octicon-copy m-2"><path d="${IconList["copy"]}"></path></svg>
+                <svg height="16" width="16" class="octicon octicon-check color-fg-success m-2 d-none"><path d="${IconList["check"]}"></path></svg>
+            </clipboard-copy>
+            <div class="copy-feedback">Copied!</div>
+        </div>
+    `;
+
+    const handleCodeElements = (selector = '') => {
+        document.querySelectorAll(selector).forEach(codeElement => {
+            const codeContent = codeElement.innerHTML;
+            const newStructure = document.createElement('div');
+            newStructure.className = 'snippet-clipboard-content position-relative overflow-auto';
+            newStructure.innerHTML = createClipboardHTML(codeContent);
+
+            const parentElement = codeElement.parentElement;
+            if (selector.includes('highlight')) {
+                parentElement.insertBefore(newStructure, codeElement.nextSibling);
+                parentElement.removeChild(codeElement);
+            } else {
+                parentElement.parentElement.replaceChild(newStructure, parentElement);
+            }
+        });
+    };
+
+    handleCodeElements('pre.notranslate > code.notranslate');
+    handleCodeElements('div.highlight > pre.notranslate');
+
+    let currentFeedback = null;
+    document.querySelectorAll('clipboard-copy').forEach(copyButton => {
+        copyButton.addEventListener('click', () => {
+            const codeContent = copyButton.closest('.snippet-clipboard-content').innerText;
+            const tempTextArea = document.createElement('textarea');
+            tempTextArea.value = codeContent;
+            document.body.appendChild(tempTextArea);
+            tempTextArea.select();
+            document.execCommand('copy');
+            document.body.removeChild(tempTextArea);
+
+            const copyIcon = copyButton.querySelector('.octicon-copy');
+            const checkIcon = copyButton.querySelector('.octicon-check');
+            const copyFeedback = copyButton.nextElementSibling;
+
+            if (currentFeedback && currentFeedback !== copyFeedback) {currentFeedback.style.display = 'none';}
+            currentFeedback = copyFeedback;
+
+            copyIcon.classList.add('d-none');
+            checkIcon.classList.remove('d-none');
+            copyFeedback.style.display = 'block';
+            copyButton.style.borderColor = 'var(--color-success-fg)';
+
+            setTimeout(() => {
+                copyIcon.classList.remove('d-none');
+                checkIcon.classList.add('d-none');
+                copyFeedback.style.display = 'none';
+                copyButton.style.borderColor = '';
+            }, 2000);
+        });
+    });
+});
+
+</script>
+<script src='https://blog.meekdai.com/Gmeek/plugins/GmeekTOC.js'></script><script src='https://blog.meekdai.com/Gmeek/plugins/lightbox.js'></script>
+
+</html>
